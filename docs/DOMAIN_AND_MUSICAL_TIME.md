@@ -184,8 +184,10 @@ Invariants:
 3. At most one authoritative meter value may exist at the same position.
 4. Conflicting meter events at one position are invalid unless resolved by an explicit edit operation.
 5. Measure and beat labels are derived from `MeterMap` plus `MusicalPosition`; they are not independent clocks.
+6. Every `MeterChange` position is a derived measure boundary. Position `0` begins the first measure; every later meter change ends the preceding measure at that exact `MusicalPosition` and begins a new measure using the new meter.
+7. If a meter change occurs before the measure length implied by the previous meter is complete, the preceding measure is a valid partial measure for coordinate derivation; the change must not be reinterpreted as continuing the previous measure under the new meter.
 
-Stage 0-C.1 does not require meter changes to occur only at bar boundaries. Import and editing layers may later apply stricter musical-policy validation where appropriate.
+Stage 0-C.1 does not require a meter change to coincide with a measure boundary that would have been implied by the previous meter. The meter-change position itself establishes the new boundary deterministically. Import and editing layers may later apply stricter musical-policy validation where appropriate.
 
 ## 10. Measure and beat coordinates
 
@@ -205,6 +207,7 @@ Rules:
 
 - measure number is not the authoritative time value;
 - beat number is not the authoritative time value;
+- each meter-change position is beat 1 / the start of the new derived measure;
 - changing meter must not rewrite the underlying identity of a musical position;
 - UI measure/beat labels must be reproducible from validated Musical Time and MeterMap state;
 - imported measure numbers may be preserved as metadata where needed, but they must not replace the authoritative position model.
