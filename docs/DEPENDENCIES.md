@@ -216,7 +216,7 @@ Stage 0-B.1 is acceptable when:
 
 ## 17. Primary research sources
 
-Validated on 2026-08-12. These URLs are evidence sources for this draft; they must be rechecked when a dependency is activated.
+Validated on 2026-08-12. These URLs are evidence sources for this contract; they must be rechecked when a dependency is activated.
 
 - JUCE releases: https://github.com/juce-framework/JUCE/releases
 - JUCE 9 EULA: https://juce.com/legal/juce-9-licence/
