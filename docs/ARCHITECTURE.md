@@ -22,20 +22,25 @@ The system must:
 ## 3. High-level layers
 
 ```text
-Presentation / UI
-       |
-Application Commands
-       |
-Domain / Project Model
-       |
-Core Engines
-       |
-Adapter Boundaries
-       |
-Devices / Files / External Services
+Compile-time dependency direction within ST Music Workstation:
+
+Presentation / UI -------> Application Commands -------> Domain / Project Model
+Core Engines ------------------------------------------> Domain / Project Model
+Adapter Implementations -------------------------------> Domain Ports / Stable Contracts
 ```
 
-Dependency direction must point inward toward stable domain contracts. Core domain types must not depend on UI frameworks, AI providers, notation renderers, plugin SDKs, or device-specific APIs.
+`Domain Ports / Stable Contracts` are owned by the core/domain side. Adapter implementations may depend on external device APIs, file libraries, plugin SDKs, notation engines, or services as needed, but those external types must not propagate inward across the port boundary.
+
+The following reverse dependencies are prohibited:
+
+```text
+Domain / Project Model -X-> Presentation / UI
+Domain / Project Model -X-> Adapter Implementations
+Domain / Project Model -X-> Device APIs / Plugin SDKs / AI providers
+Core domain contracts  -X-> Third-party framework types
+```
+
+All dependencies inside the core architecture must point toward stable domain contracts. Core Engines implement behavior against those contracts; adapters implement or consume domain ports at the boundary. Core domain types must not depend on UI frameworks, AI providers, notation renderers, plugin SDKs, or device-specific APIs.
 
 ## 4. Core domains
 
