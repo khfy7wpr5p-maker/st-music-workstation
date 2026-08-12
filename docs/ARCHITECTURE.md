@@ -53,8 +53,8 @@ The architecture reserves the following first-class domains:
 - Sound Library / Instruments
 - Teacher Review
 - Validation
-- Plugin Adapters
-- AI Adapters
+
+Plugin Adapters and AI Adapters belong to the Integration / Adapter Boundaries layer, not to the core domain model.
 
 The detailed schemas and type constraints for these domains are deferred to Stage 0-C.
 
@@ -121,7 +121,7 @@ Exact library formats and supported engines are deferred to later stages.
 
 ## 12. Third-party dependency boundary
 
-Third-party audio, MIDI, notation, plugin, file, instrument, or AI technologies must be integrated through explicit adapters where practical.
+Third-party audio, MIDI, notation, plugin, file, instrument, or AI technologies must be integrated through explicit adapter boundaries.
 
 No third-party framework may silently become the architectural source of truth for Project, Musical Time, Teacher Review, or Validation.
 
@@ -186,7 +186,7 @@ All subsequent implementation work must follow these rules unless this architect
 3. Audio, MIDI, Score, and TAB must share one Musical Time model.
 4. MusicXML must not be the authoritative internal project state.
 5. Sound libraries must not be embedded as DAW Core logic.
-6. Third-party engines must be isolated behind explicit boundaries where practical.
+6. Third-party engines must be isolated behind explicit adapter boundaries.
 7. AI may create candidates or proposals, not direct authoritative mutations.
 8. Teacher Review and Validation must operate independently of AI.
 9. Core deterministic behavior must remain available without network or AI services.
