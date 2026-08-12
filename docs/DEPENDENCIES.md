@@ -1,6 +1,6 @@
 # ST Music Workstation — Dependency & License Contract v0.1
 
-Status: Stage 0-B.1 draft contract
+Status: Stage 0-B.1 accepted and merged
 Validated research date: 2026-08-12
 
 ## 1. Purpose
@@ -216,7 +216,7 @@ Stage 0-B.1 is acceptable when:
 
 ## 17. Primary research sources
 
-Validated on 2026-08-12. These URLs are evidence sources for this draft; they must be rechecked when a dependency is activated.
+Validated on 2026-08-12. These URLs are evidence sources for this contract; they must be rechecked when a dependency is activated.
 
 - JUCE releases: https://github.com/juce-framework/JUCE/releases
 - JUCE 9 EULA: https://juce.com/legal/juce-9-licence/
