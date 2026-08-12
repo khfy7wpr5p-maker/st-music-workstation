@@ -98,21 +98,32 @@ Stage 0-C.1 does not define which Score, MIDI, TAB, Audio, Clip, or Project enti
 
 ## 6. TempoBpm
 
-Tempo is represented by an ST-owned validated `TempoBpm` value.
+Tempo is represented by an ST-owned validated exact rational `TempoBpm` value measured in quarter-note beats per minute.
+
+Conceptually:
+
+```text
+TempoBpm = numerator / denominator quarter-note beats per minute
+```
 
 Contract range:
 
 ```text
-1.0 <= TempoBpm <= 1000.0
+1 <= TempoBpm <= 1000
 ```
 
 Rules:
 
-- NaN is invalid;
-- positive or negative Infinity is invalid;
+- `numerator` is a strictly positive integer;
+- `denominator` is a strictly positive integer;
+- the value is normalized to a canonical reduced form;
+- NaN is invalid at every adapter or input boundary;
+- positive or negative Infinity is invalid at every adapter or input boundary;
 - zero and negative BPM are invalid;
 - values outside the contract range are invalid;
-- authoritative persistence must use a deterministic decimal/rational representation rather than rely on platform-specific binary floating-point serialization;
+- an exact decimal source such as `120.5` must be converted from its decimal lexical value to the equivalent exact rational value (`241/2`), not through platform-dependent binary floating-point equality;
+- a binary floating-point value received from an external API is boundary data only and must be validated and converted to the canonical rational representation before it can become authoritative state;
+- authoritative persistence stores the canonical rational value, not a platform-specific binary floating-point encoding;
 - an adapter must reject invalid tempo values instead of clamping them silently.
 
 The range is intentionally broad enough for normal and extreme musical use while excluding nonsensical or unsafe values.
@@ -158,12 +169,30 @@ Contract ranges:
 denominator ∈ {1, 2, 4, 8, 16, 32, 64}
 ```
 
+Canonical coordinate values are derived exactly as:
+
+```text
+canonicalBeatUnit = 4 / denominator quarter notes
+measureLength     = numerator × canonicalBeatUnit
+```
+
 Rules:
 
 - zero or negative values are invalid;
 - denominator values outside the allowed set are invalid;
 - meter values must not be inferred from visual barlines alone;
-- additive/compound display conventions may be represented later, but their underlying authoritative duration must remain compatible with the shared Musical Time model.
+- the canonical beat used for measure/beat coordinates is always one denominator-note unit;
+- compound or additive pulse groupings are derived presentation/grouping metadata and must not replace the canonical beat unit or create another timing authority.
+
+Examples:
+
+```text
+4/4 canonical beat unit = quarter note; measure length = 4 quarter notes
+3/4 canonical beat unit = quarter note; measure length = 3 quarter notes
+6/8 canonical beat unit = eighth note;   measure length = 3 quarter notes
+```
+
+A UI may later group 6/8 as two dotted-quarter pulses, but the canonical coordinate system remains beats 1 through 6 in eighth-note units. A separate pulse/grouping view must be explicitly distinguished from canonical `Measure / Beat / Subdivision` coordinates.
 
 ## 9. MeterMap
 
@@ -203,16 +232,25 @@ MusicalPosition
 Measure / Beat / Subdivision view
 ```
 
+For a position inside a derived measure, let `offset` be the exact MusicalValue from that measure's start and let `canonicalBeatUnit` be defined by the active meter:
+
+```text
+beatIndex       = floor(offset / canonicalBeatUnit) + 1
+beatSubdivision = offset mod canonicalBeatUnit
+```
+
 Rules:
 
 - measure number is not the authoritative time value;
 - beat number is not the authoritative time value;
+- beat numbering is one-based and uses the active meter's denominator-note unit;
 - each meter-change position is beat 1 / the start of the new derived measure;
+- compound-meter pulse groupings do not change canonical beat numbering;
 - changing meter must not rewrite the underlying identity of a musical position;
 - UI measure/beat labels must be reproducible from validated Musical Time and MeterMap state;
 - imported measure numbers may be preserved as metadata where needed, but they must not replace the authoritative position model.
 
-## 11. SampleFrame
+## 11. SampleFrame and SampleRate
 
 `SampleFrame` represents an absolute discrete playback frame in an audio-rendering context.
 
@@ -222,10 +260,18 @@ Conceptually:
 SampleFrame = non-negative integer
 ```
 
+The canonical conversion input `SampleRate` is an exact positive rational quantity measured in frames per second:
+
+```text
+SampleRate = numerator / denominator frames per second
+```
+
 Rules:
 
 - negative sample frames are invalid as authoritative playback positions in Stage 0-C.1;
-- conversion requires a strictly positive finite sample rate supplied by the playback context;
+- `SampleRate.numerator` and `SampleRate.denominator` are strictly positive integers and the value is stored in reduced form;
+- NaN, Infinity, zero, or negative sample-rate input is invalid at an adapter boundary;
+- a device/API sample-rate value must be validated and converted to the canonical exact rational form before musical-to-playback conversion;
 - sample rate is not itself a Musical Time value;
 - SampleFrame is a playback representation, not the authoritative musical location;
 - Audio, MIDI scheduling, Score cursor, and TAB cursor must derive their playback alignment from the same Musical Time conversion path.
@@ -239,10 +285,13 @@ Conversion from `MusicalPosition` to playback time is defined by integrating the
 For a constant-tempo segment:
 
 ```text
-seconds = quarter_notes × 60 / BPM
+segmentSeconds = quarterNotes × 60 / TempoBpm
+segmentFrames  = quarterNotes × 60 × SampleRate / TempoBpm
 ```
 
-For multiple tempo segments, the total playback duration is the ordered sum of each segment duration.
+`quarterNotes`, `TempoBpm`, and `SampleRate` are exact rational values under this contract. Therefore each segment duration and frame count is calculated as an exact rational quantity.
+
+For multiple tempo segments, the total playback duration/frame position is the ordered exact-rational sum of all completed segment contributions plus the target segment contribution.
 
 The conversion pipeline is:
 
@@ -251,9 +300,11 @@ MusicalPosition
       +
    TempoMap
       ↓
-Exact/controlled playback duration
+Exact rational playback duration / frame position
       +
    SampleRate
+      ↓
+Round once at final boundary
       ↓
 SampleFrame
 ```
@@ -262,13 +313,14 @@ Invariants:
 
 1. Tempo segments must be processed in deterministic position order.
 2. Invalid TempoMap state makes conversion fail; it must not produce a best-effort result.
-3. Intermediate calculations must use deterministic precision sufficient to avoid platform-dependent ordering or cumulative drift.
-4. Conversion to discrete `SampleFrame` is the only Stage 0-C.1 boundary that requires integer rounding.
-5. `SampleFrame` conversion uses round-to-nearest with ties-to-even.
-6. The same input MusicalPosition, TempoMap, and sample rate must produce the same SampleFrame result on all supported platforms within the defined numeric representation.
-7. Overflow, underflow, or out-of-range conversion must be reported as failure rather than wrapped or saturated silently.
+3. All authoritative intermediate tempo, duration, sample-rate, and frame-position calculations use normalized exact rational arithmetic; binary floating-point accumulation is not the contract algorithm.
+4. Segment contributions must not be individually rounded to SampleFrame. They are summed as exact rationals first.
+5. Conversion to discrete `SampleFrame` rounds exactly once, after the complete rational frame position for the requested `MusicalPosition` has been calculated.
+6. Final `SampleFrame` conversion uses round-to-nearest with ties-to-even applied to that exact rational value.
+7. The same normalized MusicalPosition, TempoMap, and SampleRate must therefore produce the same SampleFrame result on every conforming platform.
+8. Arithmetic representation limits, overflow, underflow, or out-of-range conversion must be reported as failure rather than wrapped, saturated, or approximated silently.
 
-Reverse conversion from `SampleFrame` to `MusicalPosition` must use the same TempoMap and deterministic segment boundaries. It may return an exact position when representable or a bounded conversion result whose precision contract is made explicit by the implementation stage; it must not create a second timing authority.
+Reverse conversion from `SampleFrame` to `MusicalPosition` treats the discrete frame as the exact rational playback time `SampleFrame / SampleRate`, locates the corresponding TempoMap segment deterministically, and solves that segment using the same exact rational tempo arithmetic. If the resulting musical position cannot be represented within implementation representation limits, conversion fails explicitly; reverse conversion must not create a second timing authority.
 
 ## 13. Change semantics
 
@@ -296,14 +348,14 @@ Validation must reject at minimum:
 - rational values with zero/negative denominator;
 - arithmetic overflow or unsupported representation size;
 - NaN or Infinity in tempo or conversion inputs;
-- BPM outside `1.0..1000.0`;
+- BPM outside `1..1000`;
 - meter numerator outside `1..64`;
 - unsupported meter denominator;
 - missing tempo at position `0`;
 - missing meter at position `0`;
 - conflicting tempo events at one position;
 - conflicting meter events at one position;
-- non-positive or non-finite sample rate supplied to conversion;
+- non-positive, non-finite, or non-representable sample rate supplied to conversion;
 - playback/sample-frame conversion overflow.
 
 Validation failure must be explicit. Invalid values must not be silently clamped, guessed, normalized into a different musical meaning, or accepted because an external library accepts them.
@@ -335,9 +387,11 @@ The following implementations violate Stage 0-C.1:
 - choosing a fixed MIDI PPQ such as 480/960 as the authoritative project clock;
 - using MusicXML `divisions` as the permanent project timing unit;
 - maintaining separate Score, MIDI, and TAB clocks;
-- storing authoritative musical positions as unconstrained `float`/`double` values and comparing them by raw equality;
+- storing authoritative musical positions, tempo values, or conversion accumulators as unconstrained `float`/`double` values and relying on raw binary floating-point equality/accumulation for the contract result;
+- rounding each tempo segment to SampleFrame before summing the complete target position;
 - accepting NaN/Infinity tempo or timing values;
 - silently clamping invalid BPM/meter values;
+- treating compound-meter pulse groupings as the canonical beat clock;
 - allowing notation-renderer or plugin-SDK types to define core timing identity;
 - rounding musical durations merely to fit an external format without reporting loss;
 - using UI pixels or waveform coordinates as project time.
@@ -349,7 +403,7 @@ Stage 0-C.1 does not define:
 - Project, Track, Clip, ScoreNote, MIDI event, TAB event, or AudioClip identity schemas;
 - cross-domain event mappings;
 - chord/tie/voice/fingering relationships;
-- project persistence format;
+- project persistence format beyond the canonical value requirements stated for Musical Time;
 - undo/redo transactions;
 - audio callback implementation;
 - device buffer sizes or supported sample-rate matrix;
@@ -358,6 +412,7 @@ Stage 0-C.1 does not define:
 - MusicXML security schema;
 - tempo ramps or automation curves;
 - plugin-host timing implementation;
+- compound/additive pulse-grouping presentation metadata;
 - AI models, inference, or candidate semantics;
 - production source code, dependencies, build files, tests, workflows, or CI.
 
@@ -369,11 +424,13 @@ Stage 0-C.1 is acceptable when:
 
 - exactly one ST-owned authoritative Musical Time model is defined;
 - musical position and duration use exact rational musical quantities independent of MIDI PPQ and MusicXML divisions;
+- TempoBpm and SampleRate have canonical exact rational representations for deterministic conversion;
 - tempo and meter validation/ranges are explicit;
 - tempo and meter maps have deterministic ordering and origin requirements;
+- canonical beat coordinates use the active meter denominator-note unit, with compound/additive pulse grouping kept as a separate derived presentation concern;
 - measure/beat coordinates are derived views rather than independent clocks;
-- musical-position ↔ playback/sample-position conversion is deterministic and has an explicit rounding boundary;
-- NaN, Infinity, invalid ranges, conflicts, and overflow fail explicitly;
+- musical-position ↔ playback/sample-position conversion uses exact rational accumulation and a single explicit round-to-nearest, ties-to-even SampleFrame boundary;
+- NaN, Infinity, invalid ranges, conflicts, representation limits, and overflow fail explicitly;
 - external timing formats remain adapter concerns;
 - Stage 0-C.2 domain identities/mappings are not prematurely defined;
 - no production code, dependency, build, workflow, or CI change is introduced by this stage.
