@@ -1,6 +1,6 @@
 # ST Music Workstation — Dependency & License Contract v0.1
 
-Status: Stage 0-B.1 draft contract
+Status: Stage 0-B.1 accepted and merged
 Validated research date: 2026-08-12
 
 ## 1. Purpose
