@@ -79,8 +79,21 @@ set_target_properties(st_identity_allocator_test PROPERTIES
 )
 st_apply_strict_warnings(st_identity_allocator_test)
 
+add_executable(st_project_revision_test
+    tests/cpp/project_revision_test.cpp
+)
+
+target_link_libraries(st_project_revision_test PRIVATE st_core)
+set_target_properties(st_project_revision_test PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+)
+st_apply_strict_warnings(st_project_revision_test)
+
 if(BUILD_TESTING)
     add_test(NAME st.build.contract COMMAND st_build_contract_test)
     add_test(NAME st.core.identity COMMAND st_identity_test)
     add_test(NAME st.core.identity_allocator COMMAND st_identity_allocator_test)
+    add_test(NAME st.core.project_revision COMMAND st_project_revision_test)
 endif()
