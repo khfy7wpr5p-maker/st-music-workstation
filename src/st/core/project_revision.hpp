@@ -48,7 +48,7 @@ private:
 
 class ProjectSnapshotToken final {
 public:
-    constexpr ProjectSnapshotToken(
+    ProjectSnapshotToken(
         ProjectId project_id,
         ProjectRevision revision) noexcept
         : project_id_(project_id)
@@ -56,24 +56,24 @@ public:
     {
     }
 
-    [[nodiscard]] constexpr const ProjectId& project_id() const noexcept
+    [[nodiscard]] const ProjectId& project_id() const noexcept
     {
         return project_id_;
     }
 
-    [[nodiscard]] constexpr ProjectRevision revision() const noexcept
+    [[nodiscard]] ProjectRevision revision() const noexcept
     {
         return revision_;
     }
 
-    [[nodiscard]] constexpr bool matches(
+    [[nodiscard]] bool matches(
         const ProjectId& current_project_id,
         ProjectRevision current_revision) const noexcept
     {
         return project_id_ == current_project_id && revision_ == current_revision;
     }
 
-    friend constexpr bool operator==(const ProjectSnapshotToken&, const ProjectSnapshotToken&) = default;
+    friend bool operator==(const ProjectSnapshotToken&, const ProjectSnapshotToken&) = default;
 
 private:
     ProjectId project_id_;
