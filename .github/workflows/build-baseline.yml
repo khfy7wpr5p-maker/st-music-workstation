@@ -24,6 +24,16 @@ jobs:
           cmake --version
           c++ --version
 
+      - name: Verify in-source build is rejected
+        run: |
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          cp CMakeLists.txt "$scratch/CMakeLists.txt"
+          if cmake -S "$scratch" -B "$scratch"; then
+            echo "in-source configure unexpectedly succeeded" >&2
+            exit 1
+          fi
+
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DST_STRICT_WARNINGS=ON
 
