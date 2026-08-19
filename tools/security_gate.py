@@ -89,12 +89,15 @@ SECRET_PATTERNS = (
 )
 
 EXTERNAL_ACTION_REF = re.compile(r"^[^@\s]+@([0-9a-fA-F]{40})$")
-USES_LINE = re.compile(r"^\s*(?:-\s*)?uses:\s*([^#\s]+)", re.MULTILINE)
-PULL_REQUEST_TARGET = re.compile(r"^\s*pull_request_target\s*:", re.MULTILINE)
-SECRET_REFERENCE = re.compile(r"\$\{\{\s*secrets\.")
-WRITE_PERMISSION = re.compile(r"^\s+[A-Za-z0-9_-]+:\s*write\s*$", re.MULTILINE)
-TOP_LEVEL_PERMISSIONS = re.compile(r"^permissions:\s*$", re.MULTILINE)
-TOP_LEVEL_WRITE_ALL = re.compile(r"^permissions:\s*write-all\s*$", re.MULTILINE)
+USES_LINE = re.compile(
+    r"^\s*(?:-\s*)?uses\s*:\s*['\"]?([^#\s'\"]+)",
+    re.MULTILINE,
+)
+PULL_REQUEST_TARGET = re.compile(r"\bpull_request_target\b")
+SECRET_REFERENCE = re.compile(r"\$\{\{\s*secrets(?:\.|\s*\[)")
+WRITE_PERMISSION = re.compile(r"\b[A-Za-z0-9_-]+\s*:\s*write\b")
+TOP_LEVEL_PERMISSIONS = re.compile(r"^permissions\s*:\s*$", re.MULTILINE)
+TOP_LEVEL_WRITE_ALL = re.compile(r"\bwrite-all\b")
 UNTRUSTED_EVENT_EXPRESSION = re.compile(r"\$\{\{\s*github\.event\.")
 REMOTE_PIPE_TO_SHELL = re.compile(
     r"\b(?:curl|wget)\b[^\n|]*\|\s*(?:bash|sh)\b",
@@ -154,7 +157,7 @@ def _run_blocks(workflow_text: str) -> list[str]:
     index = 0
     while index < len(lines):
         line = lines[index]
-        match = re.match(r"^(\s*)(?:-\s*)?run:\s*(.*)$", line)
+        match = re.match(r"^(\s*)(?:-\s*)?run\s*:\s*(.*)$", line)
         if not match:
             index += 1
             continue
