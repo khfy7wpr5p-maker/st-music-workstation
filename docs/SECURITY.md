@@ -1,6 +1,6 @@
 # ST Music Workstation — Security Baseline Contract v0.1
 
-Status: Stage 0-S closure candidate; pending current-main and reviewed-head CI evidence on the closure PR
+Status: Stage 0-S Security Gate CLOSED — baseline contract, security regression CI, reviewed-head validation, and current-main validation PASS
 
 ## 1. Purpose and gate order
 
@@ -461,11 +461,11 @@ The baseline regression layer must at minimum detect:
 
 The regression implementation must include negative tests proving that unsafe samples are rejected and safe samples pass.
 
-Stage 0-S.1 defines this contract. Stage 0-S.2 implements the dependency-free scanner, negative/safe regression tests, and least-privilege GitHub Actions workflow and was merged through PR #7. Stage 0-S.4 adds a separate observable `current-main-security-baseline` job and was merged through PR #9 as `6f597ff6f17860819341bd813ed5def6871b54df`. Security Gate closure remains conditional on this closure PR proving both the reviewed candidate and that current `main` independently pass the security regression suite and repository scan.
+Stage 0-S.1 defines this contract. Stage 0-S.2 implements the dependency-free scanner, negative/safe regression tests, and least-privilege GitHub Actions workflow and was merged through PR #7. Stage 0-S.4 adds a separate observable `current-main-security-baseline` job and was merged through PR #9 as `6f597ff6f17860819341bd813ed5def6871b54df`. Security Baseline run #10 on the Stage 0-S.5 closure PR proved both the reviewed candidate and that exact current `main` independently pass the full regression suite and repository scan.
 
 ## 21. Security Gate closure criteria
 
-The Security Gate can close only when fresh evidence supports all applicable items:
+The Security Gate closes only when fresh evidence supports all applicable items:
 
 ```text
 Threat boundaries defined                  PASS
@@ -480,14 +480,14 @@ Plugin boundary                            PASS
 Security regression implementation         PASS
 Negative security tests                    PASS
 Shadow review                              PASS
-Required CI                                PENDING — closure PR must prove reviewed-head PASS and current-main PASS
+Required CI                                PASS — reviewed-head and current-main validation both succeeded
 Critical unresolved finding                0
 High unresolved finding                    0
 ```
 
-Closure-candidate evidence note (2026-08-19): current `main` is `6f597ff6f17860819341bd813ed5def6871b54df`, the merge result of PR #9. The closure PR must use the observable current-main job to check out that exact SHA and pass the full security regression suite plus repository scan. Until that fresh evidence exists, functional development remains gated.
+Closure evidence (2026-08-19): Security Baseline run #10 completed successfully. Its candidate `security-baseline` job ran 27/27 security regression tests successfully and the repository scanner returned PASS. Its separate `current-main-security-baseline` job explicitly checked out `main` SHA `6f597ff6f17860819341bd813ed5def6871b54df`, ran 27/27 security regression tests successfully, and the repository scanner returned PASS. Both jobs used the reviewed immutable checkout SHA with persisted credentials disabled; runner token permissions were limited to Contents read and Metadata read. With zero verified CRITICAL or HIGH findings, the Stage 0-S baseline Security Gate is CLOSED.
 
-Repository branch protection, richer platform/build security, parser fuzzing, sanitizer matrices, dependency SBOM/scanning, plugin process isolation, and runtime sandboxing may remain later-stage work when the corresponding runtime/build surfaces exist, but their absence must not be misrepresented as implemented protection.
+Repository branch protection, richer platform/build security, parser fuzzing, sanitizer matrices, dependency SBOM/scanning, plugin process isolation, and runtime sandboxing remain later-stage work when the corresponding runtime/build surfaces exist; their absence is not represented as implemented protection.
 
 ## 22. Stage 0-S non-goals
 
