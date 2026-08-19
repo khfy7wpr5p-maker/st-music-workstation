@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <iostream>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -81,9 +82,9 @@ private:
 };
 
 template <typename Id>
-class VectorUniquenessScope final : public st::core::IdentityUniquenessScope<Id> {
+class VectorCollisionView final : public st::core::IdentityCollisionView<Id> {
 public:
-    explicit VectorUniquenessScope(std::vector<Id> existing = {})
+    explicit VectorCollisionView(std::vector<Id> existing = {})
         : existing_(std::move(existing))
     {
     }
@@ -133,15 +134,15 @@ int main()
 
     {
         ScriptedEntropySource source{{success_entry(1U)}};
-        VectorUniquenessScope<ProjectId> scope;
-        const auto result = ProjectIdAllocator{}.allocate(source, scope);
+        VectorCollisionView<ProjectId> collision_view;
+        const auto result = ProjectIdAllocator{}.allocate_candidate(source, collision_view);
         check(static_cast<bool>(result), "first valid non-colliding candidate succeeds");
         check(result.error == IdAllocationError::none, "successful allocation has no error");
         check(result.attempts == 1U, "successful first candidate reports one attempt");
         check(result.value->to_string() == "00000000000000000000000000000001", "candidate bytes map to canonical ID");
         check(source.calls() == 1U, "successful first candidate reads entropy once");
         check(source.all_destinations_exact(), "allocator always requests exactly 16 bytes");
-        check(scope.calls() == 1U, "non-zero candidate is checked for collision");
+        check(collision_view.calls() == 1U, "non-zero candidate is checked for known collision");
     }
 
     {
@@ -150,13 +151,13 @@ int main()
             0U,
             {},
         }}};
-        VectorUniquenessScope<ProjectId> scope;
-        const auto result = ProjectIdAllocator{}.allocate(source, scope);
+        VectorCollisionView<ProjectId> collision_view;
+        const auto result = ProjectIdAllocator{}.allocate_candidate(source, collision_view);
         check(!result, "entropy provider failure rejects allocation");
         check(result.error == IdAllocationError::entropy_failure, "entropy provider failure is explicit");
         check(result.attempts == 1U, "entropy failure reports the failing attempt");
         check(source.calls() == 1U, "entropy failure is not retried as a candidate collision");
-        check(scope.calls() == 0U, "failed entropy never reaches collision lookup");
+        check(collision_view.calls() == 0U, "failed entropy never reaches collision lookup");
     }
 
     {
@@ -165,12 +166,12 @@ int main()
             15U,
             bytes_with_last(2U),
         }}};
-        VectorUniquenessScope<ProjectId> scope;
-        const auto result = ProjectIdAllocator{}.allocate(source, scope);
+        VectorCollisionView<ProjectId> collision_view;
+        const auto result = ProjectIdAllocator{}.allocate_candidate(source, collision_view);
         check(!result, "short entropy read rejects allocation");
         check(result.error == IdAllocationError::incomplete_entropy, "short entropy read is explicit");
         check(result.attempts == 1U, "short read reports one attempt");
-        check(scope.calls() == 0U, "short read never reaches collision lookup");
+        check(collision_view.calls() == 0U, "short read never reaches collision lookup");
     }
 
     {
@@ -179,34 +180,34 @@ int main()
             17U,
             bytes_with_last(2U),
         }}};
-        VectorUniquenessScope<ProjectId> scope;
-        const auto result = ProjectIdAllocator{}.allocate(source, scope);
+        VectorCollisionView<ProjectId> collision_view;
+        const auto result = ProjectIdAllocator{}.allocate_candidate(source, collision_view);
         check(!result, "over-reported entropy read rejects allocation");
         check(result.error == IdAllocationError::incomplete_entropy, "over-reported read is explicit");
-        check(scope.calls() == 0U, "invalid byte count never reaches collision lookup");
+        check(collision_view.calls() == 0U, "invalid byte count never reaches collision lookup");
     }
 
     {
         ScriptedEntropySource source{{zero_entry(), success_entry(3U)}};
-        VectorUniquenessScope<ProjectId> scope;
-        const auto result = ProjectIdAllocator{}.allocate(source, scope);
+        VectorCollisionView<ProjectId> collision_view;
+        const auto result = ProjectIdAllocator{}.allocate_candidate(source, collision_view);
         check(static_cast<bool>(result), "all-zero candidate is retried");
         check(result.attempts == 2U, "zero then success reports two attempts");
         check(result.value->to_string() == "00000000000000000000000000000003", "retry returns the later valid candidate");
         check(source.calls() == 2U, "zero candidate consumes one bounded retry");
-        check(scope.calls() == 1U, "all-zero candidate is rejected before collision lookup");
+        check(collision_view.calls() == 1U, "all-zero candidate is rejected before collision lookup");
     }
 
     {
         const auto existing = ProjectId::parse("00000000000000000000000000000004");
         check(static_cast<bool>(existing), "collision fixture parses");
         ScriptedEntropySource source{{success_entry(4U), success_entry(5U)}};
-        VectorUniquenessScope<ProjectId> scope{{*existing.value}};
-        const auto result = ProjectIdAllocator{}.allocate(source, scope);
-        check(static_cast<bool>(result), "collision is retried until a unique candidate appears");
-        check(result.attempts == 2U, "collision then success reports two attempts");
-        check(result.value->to_string() == "00000000000000000000000000000005", "collision does not overwrite existing identity");
-        check(scope.calls() == 2U, "both non-zero candidates are checked for collision");
+        VectorCollisionView<ProjectId> collision_view{{*existing.value}};
+        const auto result = ProjectIdAllocator{}.allocate_candidate(source, collision_view);
+        check(static_cast<bool>(result), "known collision is retried until a candidate appears clear in the view");
+        check(result.attempts == 2U, "collision then candidate reports two attempts");
+        check(result.value->to_string() == "00000000000000000000000000000005", "collision does not replace existing identity");
+        check(collision_view.calls() == 2U, "both non-zero candidates are checked against the view");
     }
 
     {
@@ -214,13 +215,13 @@ int main()
             ProjectIdAllocator::max_attempts,
             zero_entry());
         ScriptedEntropySource source{std::move(entries)};
-        VectorUniquenessScope<ProjectId> scope;
-        const auto result = ProjectIdAllocator{}.allocate(source, scope);
+        VectorCollisionView<ProjectId> collision_view;
+        const auto result = ProjectIdAllocator{}.allocate_candidate(source, collision_view);
         check(!result, "sixteen all-zero candidates exhaust allocation");
         check(result.error == IdAllocationError::candidate_exhausted, "all-zero exhaustion is explicit");
         check(result.attempts == ProjectIdAllocator::max_attempts, "all-zero exhaustion is bounded at sixteen attempts");
         check(source.calls() == ProjectIdAllocator::max_attempts, "no seventeenth entropy read occurs");
-        check(scope.calls() == 0U, "zero candidates never reach uniqueness scope");
+        check(collision_view.calls() == 0U, "zero candidates never reach collision view");
     }
 
     {
@@ -230,13 +231,13 @@ int main()
             ProjectIdAllocator::max_attempts,
             success_entry(6U));
         ScriptedEntropySource source{std::move(entries)};
-        VectorUniquenessScope<ProjectId> scope{{*existing.value}};
-        const auto result = ProjectIdAllocator{}.allocate(source, scope);
-        check(!result, "sixteen collisions exhaust allocation");
+        VectorCollisionView<ProjectId> collision_view{{*existing.value}};
+        const auto result = ProjectIdAllocator{}.allocate_candidate(source, collision_view);
+        check(!result, "sixteen known collisions exhaust candidate allocation");
         check(result.error == IdAllocationError::candidate_exhausted, "collision exhaustion is explicit");
         check(result.attempts == ProjectIdAllocator::max_attempts, "collision exhaustion is bounded");
         check(source.calls() == ProjectIdAllocator::max_attempts, "collision exhaustion performs no extra entropy read");
-        check(scope.calls() == ProjectIdAllocator::max_attempts, "every non-zero collision candidate is checked");
+        check(collision_view.calls() == ProjectIdAllocator::max_attempts, "every non-zero candidate is checked against the view");
     }
 
     {
@@ -244,8 +245,8 @@ int main()
             zero_entry(),
             {EntropyReadStatus::failure, 0U, {}},
         }};
-        VectorUniquenessScope<ProjectId> scope;
-        const auto result = ProjectIdAllocator{}.allocate(source, scope);
+        VectorCollisionView<ProjectId> collision_view;
+        const auto result = ProjectIdAllocator{}.allocate_candidate(source, collision_view);
         check(!result, "provider failure after a rejected candidate fails closed");
         check(result.error == IdAllocationError::entropy_failure, "later provider failure remains explicit");
         check(result.attempts == 2U, "later provider failure reports the correct attempt");
@@ -254,8 +255,8 @@ int main()
 
     {
         ScriptedEntropySource source{{success_entry(7U)}};
-        VectorUniquenessScope<TrackId> scope;
-        const auto result = TrackIdAllocator{}.allocate(source, scope);
+        VectorCollisionView<TrackId> collision_view;
+        const auto result = TrackIdAllocator{}.allocate_candidate(source, collision_view);
         check(static_cast<bool>(result), "allocator is nominal-type specific for TrackId");
         check(result.value->to_string() == "00000000000000000000000000000007", "TrackId allocator preserves candidate payload");
     }
