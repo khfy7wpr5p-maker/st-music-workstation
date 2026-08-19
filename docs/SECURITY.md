@@ -1,6 +1,6 @@
 # ST Music Workstation — Security Baseline Contract v0.1
 
-Status: Stage 0-S.1 contract and Stage 0-S.2 regression baseline merged; Security Gate pending post-merge `main` CI verification
+Status: Stage 0-S Security Gate CLOSED — baseline contract, security regression CI, reviewed-head validation, and current-main validation PASS
 
 ## 1. Purpose and gate order
 
@@ -461,11 +461,11 @@ The baseline regression layer must at minimum detect:
 
 The regression implementation must include negative tests proving that unsafe samples are rejected and safe samples pass.
 
-Stage 0-S.1 defines this contract. Stage 0-S.2 implements the dependency-free scanner, negative/safe regression tests, and least-privilege GitHub Actions workflow and was merged through PR #7. The reviewed PR #7 head passed 22/22 tests and the repository security scan. Security Gate remains **OPEN** until the post-merge `main` workflow result is independently verified.
+Stage 0-S.1 defines this contract. Stage 0-S.2 implements the dependency-free scanner, negative/safe regression tests, and least-privilege GitHub Actions workflow and was merged through PR #7. Stage 0-S.4 adds a separate observable `current-main-security-baseline` job and was merged through PR #9 as `6f597ff6f17860819341bd813ed5def6871b54df`. Security Baseline run #10 on the Stage 0-S.5 closure PR proved both the reviewed candidate and that exact current `main` independently pass the full regression suite and repository scan.
 
 ## 21. Security Gate closure criteria
 
-The Security Gate can close only when fresh evidence supports all applicable items:
+The Security Gate closes only when fresh evidence supports all applicable items:
 
 ```text
 Threat boundaries defined                  PASS
@@ -480,14 +480,14 @@ Plugin boundary                            PASS
 Security regression implementation         PASS
 Negative security tests                    PASS
 Shadow review                              PASS
-Required CI                                PARTIAL — reviewed PR head PASS; post-merge main result not yet independently verified
+Required CI                                PASS — reviewed-head and current-main validation both succeeded
 Critical unresolved finding                0
 High unresolved finding                    0
 ```
 
-Current evidence note (2026-08-19): PR #7 merged the regression implementation to `main`; the available GitHub connector exposes PR-triggered workflow runs but does not expose the required push-triggered `main` run through its commit-run helper. This is an evidence limitation, not a claimed CI failure. Functional development remains gated until the missing post-merge CI evidence is obtained.
+Closure evidence (2026-08-19): Security Baseline run #10 completed successfully. Its candidate `security-baseline` job ran 27/27 security regression tests successfully and the repository scanner returned PASS. Its separate `current-main-security-baseline` job explicitly checked out `main` SHA `6f597ff6f17860819341bd813ed5def6871b54df`, ran 27/27 security regression tests successfully, and the repository scanner returned PASS. Both jobs used the reviewed immutable checkout SHA with persisted credentials disabled; runner token permissions were limited to Contents read and Metadata read. With zero verified CRITICAL or HIGH findings, the Stage 0-S baseline Security Gate is CLOSED.
 
-Repository branch protection, richer platform/build security, parser fuzzing, sanitizer matrices, dependency SBOM/scanning, plugin process isolation, and runtime sandboxing may remain later-stage work when the corresponding runtime/build surfaces exist, but their absence must not be misrepresented as implemented protection.
+Repository branch protection, richer platform/build security, parser fuzzing, sanitizer matrices, dependency SBOM/scanning, plugin process isolation, and runtime sandboxing remain later-stage work when the corresponding runtime/build surfaces exist; their absence is not represented as implemented protection.
 
 ## 22. Stage 0-S non-goals
 
