@@ -28,7 +28,7 @@ int main()
     static_assert(!std::is_convertible_v<ProjectId, TrackId>);
     static_assert(!std::is_convertible_v<TrackId, ProjectId>);
     static_assert(!std::is_default_constructible_v<ProjectId>);
-    static_assert(!std::is_constructible_v<ProjectId, ProjectId::Bytes>);
+    static_assert(!std::is_constructible_v<ProjectId, detail::IdBytes>);
     static_assert(!is_project_local_id_v<ProjectId>);
     static_assert(is_project_local_id_v<TrackId>);
     static_assert(is_project_local_id_v<MusicalEventId>);
