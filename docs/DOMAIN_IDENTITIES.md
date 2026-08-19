@@ -1,6 +1,6 @@
 # ST Music Workstation — Domain Identity & Mapping Contract v0.1
 
-Status: Stage 0-C.2 contract candidate; production implementation and runtime evidence remain deferred
+Status: Stage 0-C.2 contract baseline; production implementation and runtime evidence remain deferred
 
 ## 1. Scope
 
@@ -64,8 +64,12 @@ Rules:
 3. Identity values are opaque. Business logic must not infer timing, ordering, pitch, track position, creation time, user identity, or entity kind from the identifier payload.
 4. The concrete binary/text encoding and generator are not selected in Stage 0-C.2. Before production implementation, the representation must be ST-owned, bounded, serializable, collision-resistant for the chosen allocation strategy, and platform-independent.
 5. Native pointers, object addresses, array/vector indexes, renderer handles, database auto-increment values supplied by an adapter, or SDK handles are prohibited authoritative IDs.
+6. Within one Project, each nominal entity-ID namespace must be unique. Two entities of the same nominal kind must not share the same canonical ID payload.
+7. For Project-scoped entity IDs, semantic identity equality consists of the Project scope, nominal ID kind, and canonical opaque payload. The same payload under a different nominal kind is not the same identity.
+8. `ProjectId` equality consists of its nominal type and canonical opaque payload; a ProjectId must be collision-resistant across concurrently addressable projects under the selected allocation contract.
+9. Generic relation/reference containers must carry the nominal kind explicitly; they must not erase type information and compare only raw ID payload bytes/strings.
 
-## 4. Project scope
+## 4. Project scope and ProjectId lifecycle
 
 Every authoritative entity belongs to exactly one ST Project context.
 
@@ -77,7 +81,16 @@ Rules:
 - source-project IDs may be retained as provenance metadata but must not be reused as destination authoritative identity merely for convenience;
 - a project load must reject or quarantine cross-project references rather than silently retargeting them.
 
-`ProjectId` identifies the project domain instance for persistence/integration purposes but does not grant filesystem, network, or authorization capability.
+`ProjectId` identifies the logical ST Project domain instance for persistence/integration purposes but does not grant filesystem, network, or authorization capability.
+
+Project lifecycle rules:
+
+1. Saving, reopening, relocating, or renaming the storage path of the same logical project retains its `ProjectId`.
+2. A path-oriented “Save As” that is explicitly defined as relocating/renaming the same logical project retains `ProjectId`.
+3. A clone/fork/duplicate/new-project-from-template operation creates a new logical project and must allocate a new `ProjectId`, even if initial musical content is identical.
+4. Cross-project copy/import remaps copied entity IDs into the destination Project scope; it does not transplant the source Project's authoritative IDs unchanged.
+5. A future UI must distinguish “relocate/rename this project” from “create a new project copy” rather than inferring identity semantics from filesystem path selection alone.
+6. ProjectId must not be derived from a mutable filesystem path, display name, cloud URL, or external service object ID.
 
 ## 5. Stable identity semantics
 
@@ -148,7 +161,7 @@ EventProjectionLink
   projectionId   : matching typed projection identity
 ```
 
-This is a conceptual contract, not a final storage schema.
+This is a conceptual contract, not a final storage schema. `projectionId` is a typed/nominal union selected by `projectionKind`, not an untyped raw identifier string.
 
 Invariants:
 
@@ -268,7 +281,7 @@ Future project persistence must preserve ST identities and mappings stably.
 
 At load/import-to-authoritative-state boundaries, validation must reject at minimum:
 
-- duplicate authoritative IDs in a scope that requires uniqueness;
+- duplicate authoritative IDs within a nominal Project-scoped identity namespace;
 - malformed/empty/out-of-range identity encodings;
 - wrong nominal ID kind;
 - dangling EventProjectionLink targets;
@@ -282,6 +295,8 @@ At load/import-to-authoritative-state boundaries, validation must reject at mini
 Deserialization must build a non-authoritative candidate/staging graph, validate it completely, and only then publish a valid authoritative Project state.
 
 Partial successful parsing must not expose a partially authoritative identity graph.
+
+Normal load must not silently generate replacement IDs for malformed, missing, or duplicate authoritative identities. A future version-migration/recovery mode may create explicit candidate repairs only under its own reviewed policy and must preserve evidence of the transformation.
 
 ## 15. Security boundary
 
@@ -380,7 +395,7 @@ Determinism requirements:
 
 Validation must reject or explicitly quarantine, as appropriate to the later persistence/import contract:
 
-- duplicate IDs;
+- duplicate IDs within the required nominal scope;
 - empty/malformed IDs;
 - wrong nominal ID type;
 - cross-project references;
@@ -403,6 +418,8 @@ The following violate Stage 0-C.2:
 - using array/vector index as Track/Clip/Event identity;
 - using raw pointers or framework object addresses as persisted IDs;
 - making MusicXML/MIDI/renderer/plugin IDs authoritative ST IDs;
+- comparing only raw ID payload while erasing nominal type or Project scope;
+- deriving ProjectId from mutable filesystem path/display name/external service ID;
 - forcing Score, MIDI, TAB, and Audio entities into one shared identity when their semantic cardinalities differ;
 - treating equal pitch/time coordinates as proof of identity;
 - allowing AI/parser/renderer/plugin code to mutate authoritative mappings directly;
@@ -441,6 +458,8 @@ The Stage 0-C.2 contract baseline is acceptable when:
 
 - ST owns authoritative identity;
 - Project/Track/Clip/MusicalEvent/Score/MIDI/TAB/Audio identity roles are nominally separated;
+- each Project-scoped nominal identity namespace is unique and generic references preserve nominal type plus Project scope;
+- ProjectId lifecycle distinguishes relocation/rename from clone/fork/new-project creation and never derives identity from mutable storage location;
 - opaque IDs carry no implicit time/order/business semantics;
 - `MusicalEventId` expresses optional semantic occurrence identity without replacing projection identities;
 - Score/MIDI/TAB/Audio cardinality differences are preserved rather than forced into one-to-one identity;
