@@ -1,6 +1,6 @@
 # ST Music Workstation — Build & Test Baseline v0.1
 
-Status: Stage 0-E.1 candidate; build/test infrastructure only, no DAW runtime implementation
+Status: Stage 0-E.1 build/test foundation merged and evidenced; current Stage 0-E status is recorded in `docs/STAGE_0E_STATUS.md`
 
 ## 1. Scope
 
