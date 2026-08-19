@@ -1,6 +1,6 @@
 # ST Music Workstation — Security Baseline Contract v0.1
 
-Status: Stage 0-S.1 draft security contract
+Status: Stage 0-S.1 contract and Stage 0-S.2 regression baseline merged; Security Gate pending post-merge `main` CI verification
 
 ## 1. Purpose and gate order
 
@@ -58,6 +58,8 @@ Validated against the repository state at the start of Stage 0-S.1:
 - no third-party dependency is installed, vendored, linked, or activated;
 - the current tree contains documentation only;
 - Stage 0-C.1 exists as a separate open draft PR and is not part of this Security Gate change.
+
+The bullets above are the historical Stage 0-S.1 starting baseline. Stage 0-S.2 subsequently added the Security Baseline workflow, scanner, and regression tests; current status is recorded in Sections 20 and 21.
 
 Repository visibility is not changed by this stage. Because the repository is public, committed data must always be treated as externally visible and permanent even if later removed from the current tree.
 
@@ -459,7 +461,7 @@ The baseline regression layer must at minimum detect:
 
 The regression implementation must include negative tests proving that unsafe samples are rejected and safe samples pass.
 
-Stage 0-S.1 defines this contract. A subsequent bounded Security Gate implementation PR will add the regression tool/tests/workflow. Security Gate remains **OPEN** until that implementation passes shadow review and CI on the reviewed head and post-merge `main`.
+Stage 0-S.1 defines this contract. Stage 0-S.2 implements the dependency-free scanner, negative/safe regression tests, and least-privilege GitHub Actions workflow and was merged through PR #7. The reviewed PR #7 head passed 22/22 tests and the repository security scan. Security Gate remains **OPEN** until the post-merge `main` workflow result is independently verified.
 
 ## 21. Security Gate closure criteria
 
@@ -478,14 +480,16 @@ Plugin boundary                            PASS
 Security regression implementation         PASS
 Negative security tests                    PASS
 Shadow review                              PASS
-Required CI                                PASS
+Required CI                                PARTIAL — reviewed PR head PASS; post-merge main result not yet independently verified
 Critical unresolved finding                0
 High unresolved finding                    0
 ```
 
+Current evidence note (2026-08-19): PR #7 merged the regression implementation to `main`; the available GitHub connector exposes PR-triggered workflow runs but does not expose the required push-triggered `main` run through its commit-run helper. This is an evidence limitation, not a claimed CI failure. Functional development remains gated until the missing post-merge CI evidence is obtained.
+
 Repository branch protection, richer platform/build security, parser fuzzing, sanitizer matrices, dependency SBOM/scanning, plugin process isolation, and runtime sandboxing may remain later-stage work when the corresponding runtime/build surfaces exist, but their absence must not be misrepresented as implemented protection.
 
-## 22. Stage 0-S.1 non-goals
+## 22. Stage 0-S non-goals
 
 This contract does not:
 
