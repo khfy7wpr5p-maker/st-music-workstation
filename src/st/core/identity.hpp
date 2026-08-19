@@ -45,8 +45,6 @@ struct IdBytesParseResult final {
 template <typename Tag>
 class StrongId final {
 public:
-    using Bytes = detail::IdBytes;
-
     [[nodiscard]] static ParseResult<StrongId> parse(std::string_view text) noexcept
     {
         const auto parsed = detail::parse_id_bytes(text);
@@ -64,6 +62,8 @@ public:
     friend bool operator==(const StrongId&, const StrongId&) = default;
 
 private:
+    using Bytes = detail::IdBytes;
+
     explicit StrongId(Bytes bytes) noexcept
         : bytes_(bytes)
     {
