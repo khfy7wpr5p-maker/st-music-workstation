@@ -9,6 +9,9 @@
 
 namespace st::core {
 
+template <typename Tag>
+class Random128IdAllocator;
+
 enum class IdParseError : std::uint8_t {
     none = 0,
     wrong_length,
@@ -62,6 +65,8 @@ public:
     friend bool operator==(const StrongId&, const StrongId&) = default;
 
 private:
+    friend class Random128IdAllocator<Tag>;
+
     using Bytes = detail::IdBytes;
 
     explicit StrongId(Bytes bytes) noexcept
