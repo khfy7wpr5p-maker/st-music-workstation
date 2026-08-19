@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 namespace st::core {
 
@@ -26,63 +27,49 @@ struct ParseResult final {
     }
 };
 
-class OpaqueId128 final {
-public:
-    using Bytes = std::array<std::uint8_t, 16>;
+namespace detail {
 
-    [[nodiscard]] static ParseResult<OpaqueId128> parse(std::string_view text) noexcept;
-    [[nodiscard]] static std::optional<OpaqueId128> from_candidate_bytes(Bytes bytes) noexcept;
+using IdBytes = std::array<std::uint8_t, 16>;
 
-    [[nodiscard]] std::string to_string() const;
-
-    friend bool operator==(const OpaqueId128&, const OpaqueId128&) = default;
-
-private:
-    explicit OpaqueId128(Bytes bytes) noexcept
-        : bytes_(bytes)
-    {
-    }
-
-    Bytes bytes_{};
+struct IdBytesParseResult final {
+    IdBytes bytes{};
+    IdParseError error{IdParseError::none};
+    bool valid{false};
 };
+
+[[nodiscard]] IdBytesParseResult parse_id_bytes(std::string_view text) noexcept;
+[[nodiscard]] std::string id_bytes_to_string(const IdBytes& bytes);
+
+} // namespace detail
 
 template <typename Tag>
 class StrongId final {
 public:
-    using Bytes = OpaqueId128::Bytes;
+    using Bytes = detail::IdBytes;
 
     [[nodiscard]] static ParseResult<StrongId> parse(std::string_view text) noexcept
     {
-        auto parsed = OpaqueId128::parse(text);
-        if (!parsed.value.has_value()) {
+        const auto parsed = detail::parse_id_bytes(text);
+        if (!parsed.valid) {
             return {std::nullopt, parsed.error};
         }
-        return {StrongId{*parsed.value}, IdParseError::none};
-    }
-
-    [[nodiscard]] static std::optional<StrongId> from_candidate_bytes(Bytes bytes) noexcept
-    {
-        auto candidate = OpaqueId128::from_candidate_bytes(bytes);
-        if (!candidate.has_value()) {
-            return std::nullopt;
-        }
-        return StrongId{*candidate};
+        return {StrongId{parsed.bytes}, IdParseError::none};
     }
 
     [[nodiscard]] std::string to_string() const
     {
-        return value_.to_string();
+        return detail::id_bytes_to_string(bytes_);
     }
 
     friend bool operator==(const StrongId&, const StrongId&) = default;
 
 private:
-    explicit StrongId(OpaqueId128 value) noexcept
-        : value_(value)
+    explicit StrongId(Bytes bytes) noexcept
+        : bytes_(bytes)
     {
     }
 
-    OpaqueId128 value_;
+    Bytes bytes_{};
 };
 
 struct ProjectIdTag final {};
@@ -103,7 +90,18 @@ using MidiEntityId = StrongId<MidiEntityIdTag>;
 using TabEntityId = StrongId<TabEntityIdTag>;
 using AudioEntityId = StrongId<AudioEntityIdTag>;
 
+template <typename T>
+inline constexpr bool is_project_local_id_v =
+    std::is_same_v<T, TrackId> ||
+    std::is_same_v<T, ClipId> ||
+    std::is_same_v<T, MusicalEventId> ||
+    std::is_same_v<T, ScoreEntityId> ||
+    std::is_same_v<T, MidiEntityId> ||
+    std::is_same_v<T, TabEntityId> ||
+    std::is_same_v<T, AudioEntityId>;
+
 template <typename LocalId>
+    requires is_project_local_id_v<LocalId>
 class ProjectScopedId final {
 public:
     ProjectScopedId(ProjectId project_id, LocalId local_id) noexcept
