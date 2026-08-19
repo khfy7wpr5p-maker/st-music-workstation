@@ -1,0 +1,26 @@
+name: Security Baseline
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  security-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run security negative tests
+        run: python3 -m unittest discover -s tests -p 'test_security_gate*.py' -v
+
+      - name: Scan repository security baseline
+        run: python3 tools/security_gate.py .
