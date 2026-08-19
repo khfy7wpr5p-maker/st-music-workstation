@@ -1,0 +1,83 @@
+#pragma once
+
+#include "st/core/identity.hpp"
+
+#include <cstdint>
+#include <limits>
+#include <optional>
+
+namespace st::core {
+
+class ProjectRevision final {
+public:
+    using Value = std::uint64_t;
+
+    [[nodiscard]] static constexpr ProjectRevision initial() noexcept
+    {
+        return ProjectRevision{0U};
+    }
+
+    [[nodiscard]] static constexpr ProjectRevision from_persisted(Value value) noexcept
+    {
+        return ProjectRevision{value};
+    }
+
+    [[nodiscard]] constexpr Value value() const noexcept
+    {
+        return value_;
+    }
+
+    [[nodiscard]] constexpr std::optional<ProjectRevision> next() const noexcept
+    {
+        if (value_ == std::numeric_limits<Value>::max()) {
+            return std::nullopt;
+        }
+        return ProjectRevision{value_ + 1U};
+    }
+
+    friend constexpr bool operator==(ProjectRevision, ProjectRevision) = default;
+
+private:
+    explicit constexpr ProjectRevision(Value value) noexcept
+        : value_(value)
+    {
+    }
+
+    Value value_{0U};
+};
+
+class ProjectSnapshotToken final {
+public:
+    constexpr ProjectSnapshotToken(
+        ProjectId project_id,
+        ProjectRevision revision) noexcept
+        : project_id_(project_id)
+        , revision_(revision)
+    {
+    }
+
+    [[nodiscard]] constexpr const ProjectId& project_id() const noexcept
+    {
+        return project_id_;
+    }
+
+    [[nodiscard]] constexpr ProjectRevision revision() const noexcept
+    {
+        return revision_;
+    }
+
+    [[nodiscard]] constexpr bool matches(
+        const ProjectId& current_project_id,
+        ProjectRevision current_revision) const noexcept
+    {
+        return project_id_ == current_project_id && revision_ == current_revision;
+    }
+
+    friend constexpr bool operator==(const ProjectSnapshotToken&, const ProjectSnapshotToken&) = default;
+
+private:
+    ProjectId project_id_;
+    ProjectRevision revision_;
+};
+
+} // namespace st::core
