@@ -36,9 +36,9 @@ enum class IdAllocationError : std::uint8_t {
 };
 
 template <typename Id>
-class IdentityUniquenessScope {
+class IdentityCollisionView {
 public:
-    virtual ~IdentityUniquenessScope() = default;
+    virtual ~IdentityCollisionView() = default;
 
     [[nodiscard]] virtual bool contains(const Id& candidate) const noexcept = 0;
 };
@@ -61,9 +61,9 @@ public:
     using Id = StrongId<Tag>;
     static constexpr std::size_t max_attempts = 16U;
 
-    [[nodiscard]] IdAllocationResult<Id> allocate(
+    [[nodiscard]] IdAllocationResult<Id> allocate_candidate(
         IdentityEntropySource& entropy_source,
-        const IdentityUniquenessScope<Id>& uniqueness_scope) const noexcept
+        const IdentityCollisionView<Id>& collision_view) const noexcept
     {
         for (std::size_t attempt = 1U; attempt <= max_attempts; ++attempt) {
             detail::IdBytes bytes{};
@@ -87,7 +87,7 @@ public:
             }
 
             const Id candidate{bytes};
-            if (uniqueness_scope.contains(candidate)) {
+            if (collision_view.contains(candidate)) {
                 continue;
             }
 
