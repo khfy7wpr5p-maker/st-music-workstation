@@ -42,3 +42,38 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
+
+  current-main-build-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Record current-main toolchain versions
+        run: |
+          cmake --version
+          c++ --version
+
+      - name: Verify current-main in-source build is rejected
+        run: |
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          cp CMakeLists.txt "$scratch/CMakeLists.txt"
+          if cmake -S "$scratch" -B "$scratch"; then
+            echo "current-main in-source configure unexpectedly succeeded" >&2
+            exit 1
+          fi
+
+      - name: Configure current main
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DST_STRICT_WARNINGS=ON
+
+      - name: Build current main
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Test current main
+        run: ctest --test-dir build --build-config Release --output-on-failure
