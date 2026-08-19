@@ -1,6 +1,6 @@
 # ST Music Workstation — Security Baseline Contract v0.1
 
-Status: Stage 0-S.1 contract and Stage 0-S.2 regression baseline merged; Security Gate pending post-merge `main` CI verification
+Status: Stage 0-S closure candidate; pending current-main and reviewed-head CI evidence on the closure PR
 
 ## 1. Purpose and gate order
 
@@ -461,7 +461,7 @@ The baseline regression layer must at minimum detect:
 
 The regression implementation must include negative tests proving that unsafe samples are rejected and safe samples pass.
 
-Stage 0-S.1 defines this contract. Stage 0-S.2 implements the dependency-free scanner, negative/safe regression tests, and least-privilege GitHub Actions workflow and was merged through PR #7. The reviewed PR #7 head passed 22/22 tests and the repository security scan. Security Gate remains **OPEN** until the post-merge `main` workflow result is independently verified.
+Stage 0-S.1 defines this contract. Stage 0-S.2 implements the dependency-free scanner, negative/safe regression tests, and least-privilege GitHub Actions workflow and was merged through PR #7. Stage 0-S.4 adds a separate observable `current-main-security-baseline` job and was merged through PR #9 as `6f597ff6f17860819341bd813ed5def6871b54df`. Security Gate closure remains conditional on this closure PR proving both the reviewed candidate and that current `main` independently pass the security regression suite and repository scan.
 
 ## 21. Security Gate closure criteria
 
@@ -480,12 +480,12 @@ Plugin boundary                            PASS
 Security regression implementation         PASS
 Negative security tests                    PASS
 Shadow review                              PASS
-Required CI                                PARTIAL — reviewed PR head PASS; post-merge main result not yet independently verified
+Required CI                                PENDING — closure PR must prove reviewed-head PASS and current-main PASS
 Critical unresolved finding                0
 High unresolved finding                    0
 ```
 
-Current evidence note (2026-08-19): PR #7 merged the regression implementation to `main`; the available GitHub connector exposes PR-triggered workflow runs but does not expose the required push-triggered `main` run through its commit-run helper. This is an evidence limitation, not a claimed CI failure. Functional development remains gated until the missing post-merge CI evidence is obtained.
+Closure-candidate evidence note (2026-08-19): current `main` is `6f597ff6f17860819341bd813ed5def6871b54df`, the merge result of PR #9. The closure PR must use the observable current-main job to check out that exact SHA and pass the full security regression suite plus repository scan. Until that fresh evidence exists, functional development remains gated.
 
 Repository branch protection, richer platform/build security, parser fuzzing, sanitizer matrices, dependency SBOM/scanning, plugin process isolation, and runtime sandboxing may remain later-stage work when the corresponding runtime/build surfaces exist, but their absence must not be misrepresented as implemented protection.
 
