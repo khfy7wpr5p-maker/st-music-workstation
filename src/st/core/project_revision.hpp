@@ -46,6 +46,38 @@ private:
     Value value_{0U};
 };
 
+enum class RevisionAdvanceError : std::uint8_t {
+    none = 0,
+    stale_expected_revision,
+    overflow,
+};
+
+struct RevisionAdvanceResult final {
+    std::optional<ProjectRevision> next_revision;
+    RevisionAdvanceError error{RevisionAdvanceError::none};
+
+    [[nodiscard]] explicit constexpr operator bool() const noexcept
+    {
+        return next_revision.has_value();
+    }
+};
+
+[[nodiscard]] constexpr RevisionAdvanceResult prepare_revision_advance(
+    ProjectRevision current,
+    ProjectRevision expected) noexcept
+{
+    if (!(current == expected)) {
+        return {std::nullopt, RevisionAdvanceError::stale_expected_revision};
+    }
+
+    const auto next = current.next();
+    if (!next.has_value()) {
+        return {std::nullopt, RevisionAdvanceError::overflow};
+    }
+
+    return {next, RevisionAdvanceError::none};
+}
+
 class ProjectSnapshotToken final {
 public:
     ProjectSnapshotToken(
