@@ -27,6 +27,11 @@ int main()
     static_assert(!std::is_same_v<TrackId, ClipId>);
     static_assert(!std::is_convertible_v<ProjectId, TrackId>);
     static_assert(!std::is_convertible_v<TrackId, ProjectId>);
+    static_assert(!std::is_default_constructible_v<ProjectId>);
+    static_assert(!std::is_constructible_v<ProjectId, ProjectId::Bytes>);
+    static_assert(!is_project_local_id_v<ProjectId>);
+    static_assert(is_project_local_id_v<TrackId>);
+    static_assert(is_project_local_id_v<MusicalEventId>);
 
     constexpr std::string_view canonical = "00112233445566778899aabbccddeeff";
     const auto project = ProjectId::parse(canonical);
@@ -73,27 +78,19 @@ int main()
     check(!oversized_result, "oversized identifier is rejected");
     check(oversized_result.error == IdParseError::wrong_length, "oversized identifier fails at the length boundary");
 
-    ProjectId::Bytes zero_bytes{};
-    check(!ProjectId::from_candidate_bytes(zero_bytes).has_value(), "all-zero allocation candidate is rejected");
-
-    ProjectId::Bytes project_a_bytes{};
-    project_a_bytes[15] = 1U;
-    ProjectId::Bytes project_b_bytes{};
-    project_b_bytes[15] = 2U;
-    TrackId::Bytes local_bytes{};
-    local_bytes[15] = 9U;
-
-    const auto project_a = ProjectId::from_candidate_bytes(project_a_bytes);
-    const auto project_b = ProjectId::from_candidate_bytes(project_b_bytes);
-    const auto local_track = TrackId::from_candidate_bytes(local_bytes);
-    check(project_a.has_value() && project_b.has_value() && local_track.has_value(), "non-zero allocation candidates are accepted");
+    const auto project_a = ProjectId::parse("00000000000000000000000000000001");
+    const auto project_b = ProjectId::parse("00000000000000000000000000000002");
+    const auto local_track = TrackId::parse("00000000000000000000000000000009");
+    check(project_a && project_b && local_track, "scoped-ID fixtures parse canonically");
 
     if (project_a && project_b && local_track) {
-        const ScopedTrackId scoped_a{*project_a, *local_track};
-        const ScopedTrackId scoped_a_copy{*project_a, *local_track};
-        const ScopedTrackId scoped_b{*project_b, *local_track};
+        const ScopedTrackId scoped_a{*project_a.value, *local_track.value};
+        const ScopedTrackId scoped_a_copy{*project_a.value, *local_track.value};
+        const ScopedTrackId scoped_b{*project_b.value, *local_track.value};
         check(scoped_a == scoped_a_copy, "same project plus same local ID is equal");
         check(!(scoped_a == scoped_b), "same local ID under different ProjectId is not equal");
+        check(scoped_a.project_id() == *project_a.value, "scoped reference retains ProjectId");
+        check(scoped_a.local_id() == *local_track.value, "scoped reference retains nominal local ID");
     }
 
     for (int iteration = 0; iteration < 1000; ++iteration) {
