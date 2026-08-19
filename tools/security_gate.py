@@ -154,7 +154,7 @@ def _run_blocks(workflow_text: str) -> list[str]:
     index = 0
     while index < len(lines):
         line = lines[index]
-        match = re.match(r"^(\s*)run:\s*(.*)$", line)
+        match = re.match(r"^(\s*)(?:-\s*)?run:\s*(.*)$", line)
         if not match:
             index += 1
             continue
