@@ -41,10 +41,35 @@ int main()
     const auto restored_next = restored.next();
     check(restored_next.has_value() && restored_next->value() == 43U, "persisted revision advances deterministically");
 
+    const auto matching_transition = prepare_revision_advance(
+        ProjectRevision::from_persisted(42U),
+        ProjectRevision::from_persisted(42U));
+    check(static_cast<bool>(matching_transition), "matching expected revision prepares advancement");
+    check(matching_transition.error == RevisionAdvanceError::none, "matching expected revision has no error");
+    check(matching_transition.next_revision->value() == 43U, "matching expected revision yields exactly current plus one");
+
+    const auto stale_transition = prepare_revision_advance(
+        ProjectRevision::from_persisted(42U),
+        ProjectRevision::from_persisted(41U));
+    check(!stale_transition, "stale expected revision is rejected");
+    check(stale_transition.error == RevisionAdvanceError::stale_expected_revision, "stale rejection is explicit");
+    check(!stale_transition.next_revision.has_value(), "stale rejection publishes no next revision");
+
     const auto maximum = ProjectRevision::from_persisted(
         std::numeric_limits<ProjectRevision::Value>::max());
     check(!maximum.next().has_value(), "maximum revision fails closed instead of wrapping");
     check(maximum.value() == std::numeric_limits<ProjectRevision::Value>::max(), "overflow failure leaves original revision unchanged");
+
+    const auto overflow_transition = prepare_revision_advance(maximum, maximum);
+    check(!overflow_transition, "matching terminal revision cannot advance");
+    check(overflow_transition.error == RevisionAdvanceError::overflow, "terminal matching revision reports overflow");
+    check(!overflow_transition.next_revision.has_value(), "overflow publishes no next revision");
+
+    const auto stale_at_maximum = prepare_revision_advance(
+        maximum,
+        ProjectRevision::from_persisted(std::numeric_limits<ProjectRevision::Value>::max() - 1U));
+    check(!stale_at_maximum, "stale expected revision at terminal current value is rejected");
+    check(stale_at_maximum.error == RevisionAdvanceError::stale_expected_revision, "stale precondition takes deterministic precedence over overflow");
 
     const auto project_a = ProjectId::parse("00000000000000000000000000000001");
     const auto project_b = ProjectId::parse("00000000000000000000000000000002");
@@ -64,14 +89,14 @@ int main()
     }
 
     ProjectRevision current = ProjectRevision::initial();
-    for (std::uint64_t expected = 1U; expected <= 10000U; ++expected) {
-        const auto advanced = current.next();
-        check(advanced.has_value(), "bounded repeated revision advance succeeds");
+    for (std::uint64_t expected_value = 1U; expected_value <= 10000U; ++expected_value) {
+        const auto advanced = prepare_revision_advance(current, current);
+        check(static_cast<bool>(advanced), "bounded repeated revision transition succeeds");
         if (!advanced) {
             break;
         }
-        current = *advanced;
-        check(current.value() == expected, "repeated revision advance is deterministic");
+        current = *advanced.next_revision;
+        check(current.value() == expected_value, "repeated revision transition is deterministic");
     }
 
     return failures == 0 ? 0 : 1;
