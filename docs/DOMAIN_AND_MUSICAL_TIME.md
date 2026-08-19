@@ -1,6 +1,6 @@
 # ST Music Workstation — Domain & Musical-Time Contract v0.1
 
-Status: Stage 0-C.1 draft contract
+Status: Stage 0-C.1 contract baseline; production implementation and runtime evidence remain deferred
 
 ## 1. Scope
 
@@ -51,6 +51,9 @@ Rules:
 3. Values are normalized to a canonical reduced form.
 4. Authoritative Musical Time must not depend on binary floating-point equality.
 5. Import adapters must preserve exact source timing where representable and must report unsupported or invalid timing rather than silently approximating it.
+6. Validity must not depend on native integer width, `size_t`, compiler extensions, or other platform-specific representation capacity. Before production Musical Time types are implemented, a follow-on reviewed contract/build baseline must define a single ST-owned acceptance envelope for numerator/denominator magnitude and intermediate exact-rational arithmetic that is identical on every supported platform.
+7. An implementation may use a wider internal representation than the ST acceptance envelope, but it must not accept authoritative values on one supported platform that another conforming supported platform is required to reject solely because of native representation width.
+8. Until the platform-independent acceptance envelope is fixed, this Stage 0-C.1 document authorizes the semantic contract only, not a production storage type or platform-specific numeric shortcut.
 
 Examples:
 
@@ -123,6 +126,7 @@ Rules:
 - values outside the contract range are invalid;
 - an exact decimal source such as `120.5` must be converted from its decimal lexical value to the equivalent exact rational value (`241/2`), not through platform-dependent binary floating-point equality;
 - a binary floating-point value received from an external API is boundary data only and must be validated and converted to the canonical rational representation before it can become authoritative state;
+- when a source exposes timing only as binary floating point, its adapter contract must define one deterministic source-semantic conversion to an exact rational value (for example, a source-defined decimal interchange value or an exact sign/significand/exponent interpretation). Epsilon comparison, tolerance-based snapping, locale-dependent formatting, platform-default decimal formatting, or undocumented rounding must not decide the authoritative rational value; if the source semantics cannot be established deterministically, the adapter must reject the value rather than guess;
 - authoritative persistence stores the canonical rational value, not a platform-specific binary floating-point encoding;
 - an adapter must reject invalid tempo values instead of clamping them silently.
 
@@ -147,7 +151,8 @@ Invariants:
 3. At most one authoritative tempo value may exist at the same position.
 4. Duplicate/conflicting events at one position are invalid unless an explicit edit operation replaces the prior event before validation.
 5. Between two tempo changes, tempo is constant for Stage 0-C.1.
-6. Tempo ramps/curves are not part of Stage 0-C.1 and must not be inferred implicitly.
+6. A tempo change is effective from its exact `position` inclusive until the next tempo-change position; conceptually tempo segments are half-open intervals `[position_i, position_i+1)`, with the final segment extending forward for as long as project time is defined.
+7. Tempo ramps/curves are not part of Stage 0-C.1 and must not be inferred implicitly.
 
 A future contract may add explicit tempo ramps without changing the ownership model defined here.
 
@@ -272,6 +277,7 @@ Rules:
 - `SampleRate.numerator` and `SampleRate.denominator` are strictly positive integers and the value is stored in reduced form;
 - NaN, Infinity, zero, or negative sample-rate input is invalid at an adapter boundary;
 - a device/API sample-rate value must be validated and converted to the canonical exact rational form before musical-to-playback conversion;
+- binary-floating sample-rate inputs are subject to the same deterministic source-semantic conversion rule defined for `TempoBpm`; tolerance-based snapping or undocumented rounding must not create authoritative SampleRate values;
 - sample rate is not itself a Musical Time value;
 - SampleFrame is a playback representation, not the authoritative musical location;
 - Audio, MIDI scheduling, Score cursor, and TAB cursor must derive their playback alignment from the same Musical Time conversion path.
@@ -320,7 +326,7 @@ Invariants:
 7. The same normalized MusicalPosition, TempoMap, and SampleRate must therefore produce the same SampleFrame result on every conforming platform.
 8. Arithmetic representation limits, overflow, underflow, or out-of-range conversion must be reported as failure rather than wrapped, saturated, or approximated silently.
 
-Reverse conversion from `SampleFrame` to `MusicalPosition` treats the discrete frame as the exact rational playback time `SampleFrame / SampleRate`, locates the corresponding TempoMap segment deterministically, and solves that segment using the same exact rational tempo arithmetic. If the resulting musical position cannot be represented within implementation representation limits, conversion fails explicitly; reverse conversion must not create a second timing authority.
+Reverse conversion from `SampleFrame` to `MusicalPosition` treats the discrete frame as the exact rational playback time `SampleFrame / SampleRate`, locates the corresponding TempoMap segment deterministically, and solves that segment using the same exact rational tempo arithmetic. If the resulting musical position cannot be represented within the platform-independent ST acceptance envelope, conversion fails explicitly; reverse conversion must not create a second timing authority.
 
 ## 13. Change semantics
 
@@ -366,7 +372,7 @@ External formats are adapters to Musical Time, not sources of architectural trut
 
 ### MIDI
 
-MIDI PPQ/ticks must be converted to exact ST MusicalValue quantities using the imported file's timing definition. Raw MIDI tick values must not become the Project's authoritative timing type.
+MIDI PPQ/ticks must be converted to exact ST MusicalValue quantities using the imported file's validated timing definition. Raw MIDI tick values must not become the Project's authoritative timing type. If a MIDI timing mode (including SMPTE-based timing) cannot be mapped to authoritative Musical Time without unstated tempo/musical assumptions, the adapter must reject it or require an explicit reviewed conversion policy; it must not invent a tempo or silently create a second timing authority.
 
 ### MusicXML
 
@@ -388,6 +394,8 @@ The following implementations violate Stage 0-C.1:
 - using MusicXML `divisions` as the permanent project timing unit;
 - maintaining separate Score, MIDI, and TAB clocks;
 - storing authoritative musical positions, tempo values, or conversion accumulators as unconstrained `float`/`double` values and relying on raw binary floating-point equality/accumulation for the contract result;
+- deriving authoritative validity from platform-native integer width or silently using different numeric acceptance limits on different supported platforms;
+- using epsilon/tolerance-based snapping or undocumented binary-float formatting to create authoritative TempoBpm or SampleRate values;
 - rounding each tempo segment to SampleFrame before summing the complete target position;
 - accepting NaN/Infinity tempo or timing values;
 - silently clamping invalid BPM/meter values;
@@ -413,6 +421,7 @@ Stage 0-C.1 does not define:
 - tempo ramps or automation curves;
 - plugin-host timing implementation;
 - compound/additive pulse-grouping presentation metadata;
+- exact platform-independent numerator/denominator/intermediate-arithmetic magnitude ceilings; these must be fixed by a reviewed follow-on contract/build baseline before production Musical Time types are implemented;
 - AI models, inference, or candidate semantics;
 - production source code, dependencies, build files, tests, workflows, or CI.
 
@@ -420,17 +429,19 @@ These items require later contracts or implementation stages. Cross-domain ident
 
 ## 18. Stage 0-C.1 acceptance criteria
 
-Stage 0-C.1 is acceptable when:
+Stage 0-C.1 contract baseline is acceptable when:
 
 - exactly one ST-owned authoritative Musical Time model is defined;
 - musical position and duration use exact rational musical quantities independent of MIDI PPQ and MusicXML divisions;
 - TempoBpm and SampleRate have canonical exact rational representations for deterministic conversion;
+- binary-floating boundary values cannot become authoritative through platform-dependent formatting, epsilon/tolerance snapping, or undocumented rounding;
+- production implementation remains gated on a single platform-independent ST rational/intermediate-arithmetic acceptance envelope;
 - tempo and meter validation/ranges are explicit;
-- tempo and meter maps have deterministic ordering and origin requirements;
+- tempo and meter maps have deterministic ordering, origin requirements, and tempo-change interval semantics;
 - canonical beat coordinates use the active meter denominator-note unit, with compound/additive pulse grouping kept as a separate derived presentation concern;
 - measure/beat coordinates are derived views rather than independent clocks;
 - musical-position ↔ playback/sample-position conversion uses exact rational accumulation and a single explicit round-to-nearest, ties-to-even SampleFrame boundary;
 - NaN, Infinity, invalid ranges, conflicts, representation limits, and overflow fail explicitly;
-- external timing formats remain adapter concerns;
+- external timing formats remain adapter concerns and unsupported/ambiguous timing modes are not guessed;
 - Stage 0-C.2 domain identities/mappings are not prematurely defined;
 - no production code, dependency, build, workflow, or CI change is introduced by this stage.
