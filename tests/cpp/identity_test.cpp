@@ -9,6 +9,13 @@ namespace {
 
 int failures = 0;
 
+struct UnreviewedLocalId final {};
+
+template <typename T>
+concept CanBeProjectScoped = requires {
+    typename st::core::ProjectScopedId<T>;
+};
+
 void check(bool condition, std::string_view message)
 {
     if (!condition) {
@@ -23,6 +30,8 @@ int main()
 {
     using namespace st::core;
 
+    static_assert(sizeof(ProjectId) == 16U);
+    static_assert(sizeof(TrackId) == 16U);
     static_assert(!std::is_same_v<ProjectId, TrackId>);
     static_assert(!std::is_same_v<TrackId, ClipId>);
     static_assert(!std::is_convertible_v<ProjectId, TrackId>);
@@ -32,6 +41,10 @@ int main()
     static_assert(!is_project_local_id_v<ProjectId>);
     static_assert(is_project_local_id_v<TrackId>);
     static_assert(is_project_local_id_v<MusicalEventId>);
+    static_assert(!CanBeProjectScoped<ProjectId>);
+    static_assert(!CanBeProjectScoped<UnreviewedLocalId>);
+    static_assert(CanBeProjectScoped<TrackId>);
+    static_assert(CanBeProjectScoped<MusicalEventId>);
 
     constexpr std::string_view canonical = "00112233445566778899aabbccddeeff";
     const auto project = ProjectId::parse(canonical);
