@@ -57,13 +57,16 @@ Authority changes only when `ProjectAggregate` completes its final commit.
 
 `ProjectAggregate` is intentionally a single-owner control-thread object in this version.
 
+To prevent accidental duplicate authoritative owners, ordinary copy and move construction/assignment are deleted. Ownership transfer semantics must be designed explicitly in a later reviewed slice rather than inherited from C++ value semantics.
+
 Rules:
 
 1. callers must not invoke publication concurrently on the same aggregate;
 2. callers must not read the aggregate concurrently with publication without a higher-level reviewed synchronization mechanism;
 3. the supplied endpoint validation view must remain stable for the duration of the publication call;
-4. this API is not authorized for the realtime audio callback;
-5. mutex, actor, queue and transaction scheduler selection remains a separate architecture decision.
+4. validation callbacks must not recursively publish to the same aggregate; such reentrant attempts are rejected explicitly;
+5. this API is not authorized for the realtime audio callback;
+6. mutex, actor, queue and transaction scheduler selection remains a separate architecture decision.
 
 This package closes the check→publish gap with respect to the aggregate's own Project revision and relation state under the single-owner contract. It does not claim multi-threaded synchronization.
 
@@ -89,18 +92,20 @@ This prevents a stale or inconsistently composed external relation lookup from b
 
 `publish_event_projection_link_addition()` applies this order:
 
-1. read the supplied endpoint-view ProjectId exactly once;
-2. reject endpoint-view Project mismatch before endpoint/relation lookup;
-3. pin the aggregate ProjectId and authoritative relation state into an internal validation adapter;
-4. revalidate the sealed prepared addition against the aggregate's exact current global Project revision;
-5. reject stale revision, invalid transition, missing/wrong-scope endpoints or authoritative duplicate relation;
-6. build a complete immutable next relation-state candidate against the same current Project snapshot;
-7. reject relation-state Project mismatch, relation limit, allocation failure or other transition failure;
-8. verify returned next-state Project scope matches the owning aggregate;
-9. commit the complete next relation state and exact next Project snapshot through no-throw assignments;
-10. return the newly authoritative Project snapshot.
+1. reject an already-active/reentrant publication before reading the validation view;
+2. enter a scoped publication guard that is released on every return path;
+3. read the supplied endpoint-view ProjectId exactly once;
+4. reject endpoint-view Project mismatch before endpoint/relation lookup;
+5. pin the aggregate ProjectId and authoritative relation state into an internal validation adapter;
+6. revalidate the sealed prepared addition against the aggregate's exact current global Project revision;
+7. reject stale revision, invalid transition, missing/wrong-scope endpoints or authoritative duplicate relation;
+8. build a complete immutable next relation-state candidate against the same current Project snapshot;
+9. reject relation-state Project mismatch, relation limit, allocation failure or other transition failure;
+10. verify returned next-state Project scope matches the owning aggregate;
+11. commit the complete next relation state and exact next Project snapshot through no-throw assignments;
+12. return the newly authoritative Project snapshot.
 
-Every failure before step 9 leaves both authoritative revision and relation state unchanged.
+Every failure before step 11 leaves both authoritative revision and relation state unchanged.
 
 ## 7. Commit safety
 
@@ -119,6 +124,7 @@ Under the single-owner contract, no failed operation can expose a partially acce
 
 The top-level publication result distinguishes:
 
+- reentrant publication;
 - endpoint-view Project mismatch;
 - publication revalidation failure;
 - relation-state transition failure;
@@ -161,7 +167,9 @@ This package:
 - performs no AI inference;
 - accepts no renderer/plugin/provider identities as authority;
 - performs no realtime-audio work;
-- does not expose a direct raw-candidate→authoritative-relation shortcut.
+- does not expose a direct raw-candidate→authoritative-relation shortcut;
+- does not permit ordinary copying/moving of the authoritative aggregate;
+- rejects recursive publication attempts before validation callbacks execute.
 
 AI/parser/UI/adapter output must still enter through candidate validation and the sealed preparation/revalidation path.
 
@@ -169,6 +177,7 @@ AI/parser/UI/adapter output must still enter through candidate validation and th
 
 The dependency-free CTest must prove at minimum:
 
+- `ProjectAggregate` is neither copyable nor movable;
 - a Project aggregate starts at revision 0 with empty authoritative relation state;
 - valid prepared input publishes one relation and advances the global Project revision exactly once;
 - stale prepared input fails without revision consumption;
@@ -178,6 +187,7 @@ The dependency-free CTest must prove at minimum:
 - endpoint-view Project mismatch fails before endpoint lookup;
 - relation resource-limit failure leaves revision and state unchanged;
 - two successful distinct publications advance revisions 0→1→2;
+- reentrant publication is rejected without double revision consumption or duplicate state publication;
 - repeated identical fresh-aggregate publication is deterministic;
 - strict Build/CTest and Security Baseline remain green.
 
@@ -194,6 +204,7 @@ This package does not implement:
 - persistence or migration;
 - mutex/actor/queue/transaction scheduling;
 - multi-threaded Project access guarantees;
+- authority-transfer/move semantics for the Project aggregate;
 - realtime publication;
 - UI/application command routing;
 - deployment or release packaging.
@@ -203,6 +214,8 @@ This package does not implement:
 This slice is acceptable when:
 
 - there is exactly one Project-owned authoritative EventProjection publication entry point in this package;
+- the aggregate cannot be duplicated through ordinary copy/move operations;
+- recursive publication is fail-closed;
 - current global Project revision is revalidated immediately before next-state construction;
 - authoritative relation duplicate state comes from the Project aggregate itself;
 - success publishes relation state and the exact next global Project revision together under the single-owner contract;
