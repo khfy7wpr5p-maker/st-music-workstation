@@ -12,6 +12,7 @@ namespace st::core {
 
 enum class ProjectEventProjectionPublicationError : std::uint8_t {
     none = 0,
+    reentrant_publication,
     validation_view_project_mismatch,
     publication_revalidation_failed,
     relation_state_transition_failed,
@@ -36,6 +37,11 @@ struct ProjectEventProjectionPublicationResult final {
 
 class ProjectAggregate final {
 public:
+    ProjectAggregate(const ProjectAggregate&) = delete;
+    ProjectAggregate& operator=(const ProjectAggregate&) = delete;
+    ProjectAggregate(ProjectAggregate&&) = delete;
+    ProjectAggregate& operator=(ProjectAggregate&&) = delete;
+
     [[nodiscard]] static ProjectAggregate initial(
         ProjectId project_id,
         EventProjectionRelationLimits relation_limits =
@@ -65,6 +71,35 @@ public:
         const PreparedEventProjectionLinkAddition& prepared,
         const EventProjectionValidationView& current_endpoint_view)
     {
+        if (publication_in_progress_) {
+            return {
+                std::nullopt,
+                ProjectEventProjectionPublicationError::reentrant_publication,
+                EventProjectionPublicationRevalidationError::none,
+                EventProjectionRelationStateTransitionError::none,
+            };
+        }
+
+        publication_in_progress_ = true;
+        class PublicationGuard final {
+        public:
+            explicit PublicationGuard(bool& flag) noexcept
+                : flag_(flag)
+            {
+            }
+
+            ~PublicationGuard()
+            {
+                flag_ = false;
+            }
+
+            PublicationGuard(const PublicationGuard&) = delete;
+            PublicationGuard& operator=(const PublicationGuard&) = delete;
+
+        private:
+            bool& flag_;
+        } guard{publication_in_progress_};
+
         const auto endpoint_view_project_id = current_endpoint_view.project_id();
         if (!(endpoint_view_project_id == snapshot_.project_id())) {
             return {
@@ -211,6 +246,7 @@ private:
 
     ProjectSnapshotToken snapshot_;
     EventProjectionRelationStateCandidate event_projection_relations_;
+    bool publication_in_progress_{false};
 };
 
 } // namespace st::core
