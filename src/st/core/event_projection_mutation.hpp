@@ -24,20 +24,9 @@ struct EventProjectionMutationPreparationResult;
 
 class PreparedEventProjectionLinkAddition final {
 public:
-    [[nodiscard]] const ProjectSnapshotToken& base_snapshot() const noexcept
-    {
-        return base_snapshot_;
-    }
-
-    [[nodiscard]] ProjectRevision next_revision() const noexcept
-    {
-        return next_revision_;
-    }
-
-    [[nodiscard]] const EventProjectionLinkCandidate& link() const noexcept
-    {
-        return link_;
-    }
+    const ProjectSnapshotToken base_snapshot;
+    const ProjectRevision next_revision;
+    const EventProjectionLinkCandidate link;
 
 private:
     friend EventProjectionMutationPreparationResult
@@ -48,18 +37,14 @@ private:
         ProjectRevision expected_revision);
 
     PreparedEventProjectionLinkAddition(
-        ProjectSnapshotToken base_snapshot,
-        ProjectRevision next_revision,
-        EventProjectionLinkCandidate link) noexcept
-        : base_snapshot_(base_snapshot)
-        , next_revision_(next_revision)
-        , link_(link)
+        ProjectSnapshotToken base_snapshot_value,
+        ProjectRevision next_revision_value,
+        EventProjectionLinkCandidate link_value) noexcept
+        : base_snapshot(base_snapshot_value)
+        , next_revision(next_revision_value)
+        , link(link_value)
     {
     }
-
-    ProjectSnapshotToken base_snapshot_;
-    ProjectRevision next_revision_;
-    EventProjectionLinkCandidate link_;
 };
 
 struct EventProjectionMutationPreparationResult final {
