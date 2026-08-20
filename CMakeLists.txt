@@ -139,6 +139,18 @@ set_target_properties(st_event_projection_publication_test PROPERTIES
 )
 st_apply_strict_warnings(st_event_projection_publication_test)
 
+add_executable(st_event_projection_relation_state_test
+    tests/cpp/event_projection_relation_state_test.cpp
+)
+
+target_link_libraries(st_event_projection_relation_state_test PRIVATE st_core)
+set_target_properties(st_event_projection_relation_state_test PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+)
+st_apply_strict_warnings(st_event_projection_relation_state_test)
+
 if(BUILD_TESTING)
     add_test(NAME st.build.contract COMMAND st_build_contract_test)
     add_test(NAME st.core.identity COMMAND st_identity_test)
@@ -148,4 +160,5 @@ if(BUILD_TESTING)
     add_test(NAME st.core.event_projection_mutation COMMAND st_event_projection_mutation_test)
     add_test(NAME st.core.prepared_relation_plan_seal COMMAND st_prepared_relation_plan_seal_test)
     add_test(NAME st.core.event_projection_publication COMMAND st_event_projection_publication_test)
+    add_test(NAME st.core.event_projection_relation_state COMMAND st_event_projection_relation_state_test)
 endif()
