@@ -116,12 +116,14 @@ struct EventProjectionValidationResult final {
     }
 };
 
-[[nodiscard]] inline EventProjectionValidationResult validate_event_projection_link_candidate(
-    const EventProjectionLinkCandidate& candidate,
-    const EventProjectionValidationView& view) noexcept
-{
-    const auto project_id = view.project_id();
+namespace detail {
 
+[[nodiscard]] inline EventProjectionValidationResult
+validate_event_projection_link_candidate_for_project(
+    const EventProjectionLinkCandidate& candidate,
+    const EventProjectionValidationView& view,
+    const ProjectId& project_id) noexcept
+{
     if (!(candidate.event_id().project_id() == project_id)) {
         return {EventProjectionValidationError::event_wrong_project};
     }
@@ -159,6 +161,19 @@ struct EventProjectionValidationResult final {
     }
 
     return {EventProjectionValidationError::none};
+}
+
+} // namespace detail
+
+[[nodiscard]] inline EventProjectionValidationResult validate_event_projection_link_candidate(
+    const EventProjectionLinkCandidate& candidate,
+    const EventProjectionValidationView& view) noexcept
+{
+    const auto project_id = view.project_id();
+    return detail::validate_event_projection_link_candidate_for_project(
+        candidate,
+        view,
+        project_id);
 }
 
 } // namespace st::core
