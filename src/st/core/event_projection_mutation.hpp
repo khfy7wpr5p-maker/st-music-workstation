@@ -20,10 +20,31 @@ enum class EventProjectionMutationPreparationError : std::uint8_t {
     relation_validation_failure,
 };
 
-struct PreparedEventProjectionLinkAddition final {
-    ProjectSnapshotToken base_snapshot;
-    ProjectRevision next_revision;
-    EventProjectionLinkCandidate link;
+struct EventProjectionMutationPreparationResult;
+
+class PreparedEventProjectionLinkAddition final {
+public:
+    const ProjectSnapshotToken base_snapshot;
+    const ProjectRevision next_revision;
+    const EventProjectionLinkCandidate link;
+
+private:
+    friend EventProjectionMutationPreparationResult
+    prepare_event_projection_link_addition(
+        const EventProjectionLinkCandidate& candidate,
+        const EventProjectionValidationView& view,
+        ProjectRevision current_revision,
+        ProjectRevision expected_revision);
+
+    PreparedEventProjectionLinkAddition(
+        ProjectSnapshotToken base_snapshot_value,
+        ProjectRevision next_revision_value,
+        EventProjectionLinkCandidate link_value) noexcept
+        : base_snapshot(base_snapshot_value)
+        , next_revision(next_revision_value)
+        , link(link_value)
+    {
+    }
 };
 
 struct EventProjectionMutationPreparationResult final {
