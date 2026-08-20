@@ -5,6 +5,7 @@
 #include <iostream>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -119,6 +120,78 @@ private:
     }
 };
 
+class ReentrantValidationView final : public st::core::EventProjectionValidationView {
+public:
+    ReentrantValidationView(
+        st::core::ProjectAggregate& aggregate,
+        const st::core::PreparedEventProjectionLinkAddition& prepared,
+        const TestValidationView& delegate) noexcept
+        : aggregate_(aggregate)
+        , prepared_(prepared)
+        , delegate_(delegate)
+    {
+    }
+
+    [[nodiscard]] st::core::ProjectId project_id() const noexcept override
+    {
+        if (!attempted_) {
+            attempted_ = true;
+            const auto nested = aggregate_.publish_event_projection_link_addition(
+                prepared_,
+                *this);
+            nested_succeeded_ = static_cast<bool>(nested);
+            nested_error_ = nested.error;
+        }
+        return delegate_.project_id_;
+    }
+
+    [[nodiscard]] bool contains_event(
+        const st::core::ScopedMusicalEventId& id) const noexcept override
+    {
+        return delegate_.contains_event(id);
+    }
+
+    [[nodiscard]] bool contains_score(
+        const st::core::ScopedScoreEntityId& id) const noexcept override
+    {
+        return delegate_.contains_score(id);
+    }
+
+    [[nodiscard]] bool contains_midi(
+        const st::core::ScopedMidiEntityId& id) const noexcept override
+    {
+        return delegate_.contains_midi(id);
+    }
+
+    [[nodiscard]] bool contains_tab(
+        const st::core::ScopedTabEntityId& id) const noexcept override
+    {
+        return delegate_.contains_tab(id);
+    }
+
+    [[nodiscard]] bool contains_audio(
+        const st::core::ScopedAudioEntityId& id) const noexcept override
+    {
+        return delegate_.contains_audio(id);
+    }
+
+    [[nodiscard]] bool contains_link(
+        const st::core::EventProjectionLinkCandidate& link) const noexcept override
+    {
+        return delegate_.contains_link(link);
+    }
+
+    mutable bool attempted_{false};
+    mutable bool nested_succeeded_{false};
+    mutable st::core::ProjectEventProjectionPublicationError nested_error_{
+        st::core::ProjectEventProjectionPublicationError::none};
+
+private:
+    st::core::ProjectAggregate& aggregate_;
+    const st::core::PreparedEventProjectionLinkAddition& prepared_;
+    const TestValidationView& delegate_;
+};
+
 std::optional<st::core::PreparedEventProjectionLinkAddition> require_prepared(
     const st::core::EventProjectionLinkCandidate& link,
     const st::core::EventProjectionValidationView& view,
@@ -141,6 +214,11 @@ std::optional<st::core::PreparedEventProjectionLinkAddition> require_prepared(
 int main()
 {
     using namespace st::core;
+
+    static_assert(!std::is_copy_constructible_v<ProjectAggregate>);
+    static_assert(!std::is_copy_assignable_v<ProjectAggregate>);
+    static_assert(!std::is_move_constructible_v<ProjectAggregate>);
+    static_assert(!std::is_move_assignable_v<ProjectAggregate>);
 
     const auto project_a = require_id<ProjectId>("00000000000000000000000000000001");
     const auto project_b = require_id<ProjectId>("00000000000000000000000000000002");
@@ -398,6 +476,29 @@ int main()
     check(
         external_relation_claim_view.link_reads_ == 0,
         "authoritative publication never asks the endpoint view for relation ownership");
+
+    auto reentrant_aggregate = ProjectAggregate::initial(project_a, *two_link_limit);
+    ReentrantValidationView reentrant_view{
+        reentrant_aggregate,
+        *prepared_a,
+        view_a,
+    };
+    const auto reentrant_outer = reentrant_aggregate.publish_event_projection_link_addition(
+        *prepared_a,
+        reentrant_view);
+    check(reentrant_view.attempted_, "validation callback attempted a nested publication");
+    check(!reentrant_view.nested_succeeded_, "nested publication is rejected fail closed");
+    check(
+        reentrant_view.nested_error_ ==
+            ProjectEventProjectionPublicationError::reentrant_publication,
+        "nested publication reports explicit reentrancy error");
+    check(static_cast<bool>(reentrant_outer), "outer publication may complete after nested attempt is rejected");
+    check(
+        reentrant_aggregate.snapshot().revision().value() == 1U,
+        "reentrancy rejection prevents double revision consumption");
+    check(
+        reentrant_aggregate.event_projection_relations().links().size() == 1U,
+        "reentrancy rejection prevents duplicate authoritative state publication");
 
     for (int iteration = 0; iteration < 1000; ++iteration) {
         auto repeated = ProjectAggregate::initial(project_a, *two_link_limit);
