@@ -17,6 +17,7 @@ enum class EventProjectionMutationPreparationError : std::uint8_t {
     projection_missing,
     duplicate_link,
     revision_overflow,
+    relation_validation_failure,
 };
 
 struct PreparedEventProjectionLinkAddition final {
@@ -54,7 +55,7 @@ struct EventProjectionMutationPreparationResult final {
         return EventProjectionMutationPreparationError::duplicate_link;
     }
 
-    return EventProjectionMutationPreparationError::duplicate_link;
+    return EventProjectionMutationPreparationError::relation_validation_failure;
 }
 
 [[nodiscard]] inline EventProjectionMutationPreparationResult
@@ -91,7 +92,7 @@ prepare_event_projection_link_addition(
 
     return {
         PreparedEventProjectionLinkAddition{
-            ProjectSnapshotToken{view.project_id(), current_revision},
+            ProjectSnapshotToken{candidate.event_id().project_id(), current_revision},
             *revision_advance.next_revision,
             candidate,
         },
