@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <iostream>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -134,6 +135,17 @@ private:
 int main()
 {
     using namespace st::core;
+
+    static_assert(!std::is_aggregate_v<RevalidatedEventProjectionLinkAddition>);
+    static_assert(!std::is_default_constructible_v<RevalidatedEventProjectionLinkAddition>);
+    static_assert(!std::is_constructible_v<
+        RevalidatedEventProjectionLinkAddition,
+        ProjectSnapshotToken,
+        ProjectSnapshotToken,
+        EventProjectionLinkCandidate>);
+    static_assert(std::is_copy_constructible_v<RevalidatedEventProjectionLinkAddition>);
+    static_assert(!std::is_copy_assignable_v<RevalidatedEventProjectionLinkAddition>);
+    static_assert(!std::is_move_assignable_v<RevalidatedEventProjectionLinkAddition>);
 
     const auto project_a = require_id<ProjectId>("00000000000000000000000000000001");
     const auto project_b = require_id<ProjectId>("00000000000000000000000000000002");
