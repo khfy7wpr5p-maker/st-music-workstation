@@ -22,7 +22,7 @@ The revalidation gate receives:
 - the current ST-owned `EventProjectionValidationView`;
 - the current authoritative `ProjectRevision`.
 
-The current ProjectId is read exactly once from the validation view and pinned for the complete revalidation decision.
+The current ProjectId is read exactly once from the supplied validation view and pinned for the complete revalidation decision.
 
 ## 3. Deterministic order
 
@@ -41,11 +41,13 @@ No step silently repairs, rebases, retargets, retries, or rewrites the prepared 
 
 ## 4. Pinned Project identity
 
-The existing relation validator now has an internal `detail` helper that accepts an already captured ProjectId.
+The ordinary public `validate_event_projection_link_candidate()` API is unchanged and remains the single relation-validation path.
 
-The ordinary public validator still reads the ProjectId itself and preserves its previous behavior.
+Publication revalidation first captures the current ProjectId once. It then creates a function-local, read-only adapter whose `project_id()` returns that captured value while every endpoint/duplicate lookup delegates to the supplied current view. The unchanged public validator runs against this adapter.
 
-Publication revalidation captures the current ProjectId once and passes that same value through all relation checks. This prevents a mutable or incorrectly composed validation view from returning Project A for one check and Project B for another check inside the same decision.
+No externally callable alternate validator is added that accepts a caller-selected ProjectId. This prevents convenience code from bypassing the ordinary ProjectId read merely by calling a lower-level helper.
+
+The pinned adapter prevents a mutable or incorrectly composed validation view from returning Project A for one ProjectId read and Project B for another ProjectId read inside the same publication decision.
 
 This is defense in depth. A future authoritative Project owner must still hold a stable serialized/atomic state while revalidation and publication occur.
 
@@ -138,13 +140,14 @@ The dependency-free CTest must prove at minimum:
 
 - a current prepared plan revalidates successfully;
 - base and next snapshot values are exact;
-- current ProjectId is read exactly once during publication revalidation;
+- current ProjectId is read exactly once from the supplied current view during publication revalidation;
 - stale prepared revision rejects before relation lookup;
 - prepared Project mismatch rejects before relation lookup;
 - a duplicate introduced after preparation is rejected;
 - an endpoint missing after preparation is rejected;
 - repeated revalidation is deterministic;
 - existing relation validator behavior remains green;
+- revalidated plan construction remains sealed from ordinary callers;
 - strict Build and Security Baseline candidate/current-main jobs pass.
 
 ## 10. Non-goals
@@ -167,6 +170,7 @@ This package does not implement:
 The package is acceptable when:
 
 - current Project identity is pinned once per decision;
+- no alternate caller-selected-ProjectId validation bypass is exposed;
 - prepared Project/revision staleness fails before relation inspection;
 - prepared next revision must be exact and checked;
 - relation invariants are revalidated against current state;
