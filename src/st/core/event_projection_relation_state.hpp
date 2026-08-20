@@ -84,6 +84,7 @@ private:
     friend EventProjectionRelationStateTransitionResult
     build_event_projection_relation_state_candidate(
         const EventProjectionRelationStateCandidate& current,
+        const ProjectSnapshotToken& current_project_snapshot,
         const RevalidatedEventProjectionLinkAddition& addition);
 
     explicit EventProjectionLink(EventProjectionLinkCandidate candidate) noexcept
@@ -102,15 +103,15 @@ public:
             EventProjectionRelationLimits::production_default())
     {
         return EventProjectionRelationStateCandidate{
-            ProjectSnapshotToken{project_id, ProjectRevision::initial()},
+            project_id,
             limits,
             {},
         };
     }
 
-    [[nodiscard]] const ProjectSnapshotToken& snapshot() const noexcept
+    [[nodiscard]] const ProjectId& project_id() const noexcept
     {
-        return snapshot_;
+        return project_id_;
     }
 
     [[nodiscard]] EventProjectionRelationLimits limits() const noexcept
@@ -127,25 +128,27 @@ private:
     friend EventProjectionRelationStateTransitionResult
     build_event_projection_relation_state_candidate(
         const EventProjectionRelationStateCandidate& current,
+        const ProjectSnapshotToken& current_project_snapshot,
         const RevalidatedEventProjectionLinkAddition& addition);
 
     EventProjectionRelationStateCandidate(
-        ProjectSnapshotToken snapshot,
+        ProjectId project_id,
         EventProjectionRelationLimits limits,
         std::vector<EventProjectionLink> links) noexcept
-        : snapshot_(std::move(snapshot))
+        : project_id_(project_id)
         , limits_(limits)
         , links_(std::move(links))
     {
     }
 
-    ProjectSnapshotToken snapshot_;
+    ProjectId project_id_;
     EventProjectionRelationLimits limits_;
     std::vector<EventProjectionLink> links_;
 };
 
 enum class EventProjectionRelationStateTransitionError : std::uint8_t {
     none = 0,
+    current_state_project_mismatch,
     base_snapshot_mismatch,
     invalid_next_snapshot,
     link_wrong_project,
@@ -156,40 +159,54 @@ enum class EventProjectionRelationStateTransitionError : std::uint8_t {
 
 struct EventProjectionRelationStateTransitionResult final {
     std::optional<EventProjectionRelationStateCandidate> value;
+    std::optional<ProjectSnapshotToken> next_snapshot;
     EventProjectionRelationStateTransitionError error{
         EventProjectionRelationStateTransitionError::none};
 
     [[nodiscard]] explicit operator bool() const noexcept
     {
-        return value.has_value();
+        return value.has_value() && next_snapshot.has_value() &&
+            error == EventProjectionRelationStateTransitionError::none;
     }
 };
 
 [[nodiscard]] inline EventProjectionRelationStateTransitionResult
 build_event_projection_relation_state_candidate(
     const EventProjectionRelationStateCandidate& current,
+    const ProjectSnapshotToken& current_project_snapshot,
     const RevalidatedEventProjectionLinkAddition& addition)
 {
-    if (!(current.snapshot() == addition.base_snapshot)) {
+    if (!(current.project_id() == current_project_snapshot.project_id())) {
         return {
+            std::nullopt,
+            std::nullopt,
+            EventProjectionRelationStateTransitionError::current_state_project_mismatch,
+        };
+    }
+
+    if (!(current_project_snapshot == addition.base_snapshot)) {
+        return {
+            std::nullopt,
             std::nullopt,
             EventProjectionRelationStateTransitionError::base_snapshot_mismatch,
         };
     }
 
-    const auto expected_next_revision = current.snapshot().revision().next();
+    const auto expected_next_revision = current_project_snapshot.revision().next();
     if (!expected_next_revision ||
-        !(addition.next_snapshot.project_id() == current.snapshot().project_id()) ||
+        !(addition.next_snapshot.project_id() == current_project_snapshot.project_id()) ||
         !(addition.next_snapshot.revision() == *expected_next_revision)) {
         return {
+            std::nullopt,
             std::nullopt,
             EventProjectionRelationStateTransitionError::invalid_next_snapshot,
         };
     }
 
-    if (!(addition.link.event_id().project_id() == current.snapshot().project_id()) ||
-        !(addition.link.projection_project_id() == current.snapshot().project_id())) {
+    if (!(addition.link.event_id().project_id() == current.project_id()) ||
+        !(addition.link.projection_project_id() == current.project_id())) {
         return {
+            std::nullopt,
             std::nullopt,
             EventProjectionRelationStateTransitionError::link_wrong_project,
         };
@@ -205,12 +222,14 @@ build_event_projection_relation_state_candidate(
     if (duplicate != current.links().end()) {
         return {
             std::nullopt,
+            std::nullopt,
             EventProjectionRelationStateTransitionError::duplicate_link,
         };
     }
 
     if (current.links().size() >= current.limits().max_links()) {
         return {
+            std::nullopt,
             std::nullopt,
             EventProjectionRelationStateTransitionError::relation_limit_exceeded,
         };
@@ -223,14 +242,16 @@ build_event_projection_relation_state_candidate(
 
         return {
             EventProjectionRelationStateCandidate{
-                addition.next_snapshot,
+                current.project_id(),
                 current.limits(),
                 std::move(next_links),
             },
+            addition.next_snapshot,
             EventProjectionRelationStateTransitionError::none,
         };
     } catch (const std::bad_alloc&) {
         return {
+            std::nullopt,
             std::nullopt,
             EventProjectionRelationStateTransitionError::allocation_failure,
         };
