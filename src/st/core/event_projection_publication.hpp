@@ -109,11 +109,68 @@ revalidate_prepared_event_projection_link_addition(
         };
     }
 
+    class PinnedProjectValidationView final : public EventProjectionValidationView {
+    public:
+        PinnedProjectValidationView(
+            const EventProjectionValidationView& source,
+            ProjectId project_id) noexcept
+            : source_(source)
+            , project_id_(project_id)
+        {
+        }
+
+        [[nodiscard]] ProjectId project_id() const noexcept override
+        {
+            return project_id_;
+        }
+
+        [[nodiscard]] bool contains_event(
+            const ScopedMusicalEventId& id) const noexcept override
+        {
+            return source_.contains_event(id);
+        }
+
+        [[nodiscard]] bool contains_score(
+            const ScopedScoreEntityId& id) const noexcept override
+        {
+            return source_.contains_score(id);
+        }
+
+        [[nodiscard]] bool contains_midi(
+            const ScopedMidiEntityId& id) const noexcept override
+        {
+            return source_.contains_midi(id);
+        }
+
+        [[nodiscard]] bool contains_tab(
+            const ScopedTabEntityId& id) const noexcept override
+        {
+            return source_.contains_tab(id);
+        }
+
+        [[nodiscard]] bool contains_audio(
+            const ScopedAudioEntityId& id) const noexcept override
+        {
+            return source_.contains_audio(id);
+        }
+
+        [[nodiscard]] bool contains_link(
+            const EventProjectionLinkCandidate& link) const noexcept override
+        {
+            return source_.contains_link(link);
+        }
+
+    private:
+        const EventProjectionValidationView& source_;
+        ProjectId project_id_;
+    };
+
+    const PinnedProjectValidationView pinned_view{
+        current_view,
+        current_project_id,
+    };
     const auto relation_validation =
-        detail::validate_event_projection_link_candidate_for_project(
-            prepared.link,
-            current_view,
-            current_project_id);
+        validate_event_projection_link_candidate(prepared.link, pinned_view);
     if (!relation_validation) {
         return {
             std::nullopt,
