@@ -48,8 +48,16 @@ private:
     std::size_t max_links_;
 };
 
+class EventProjectionRelationStateCandidate;
+struct EventProjectionRelationStateTransitionResult;
+
 class EventProjectionLink final {
 public:
+    EventProjectionLink(const EventProjectionLink&) = default;
+    EventProjectionLink(EventProjectionLink&&) noexcept = default;
+    EventProjectionLink& operator=(const EventProjectionLink&) = default;
+    EventProjectionLink& operator=(EventProjectionLink&&) noexcept = default;
+
     [[nodiscard]] const ScopedMusicalEventId& event_id() const noexcept
     {
         return candidate_.event_id();
@@ -73,8 +81,6 @@ public:
     friend bool operator==(const EventProjectionLink&, const EventProjectionLink&) = default;
 
 private:
-    friend class EventProjectionRelationStateCandidate;
-    friend struct EventProjectionRelationStateTransitionResult;
     friend EventProjectionRelationStateTransitionResult
     build_event_projection_relation_state_candidate(
         const EventProjectionRelationStateCandidate& current,
@@ -118,7 +124,6 @@ public:
     }
 
 private:
-    friend struct EventProjectionRelationStateTransitionResult;
     friend EventProjectionRelationStateTransitionResult
     build_event_projection_relation_state_candidate(
         const EventProjectionRelationStateCandidate& current,
