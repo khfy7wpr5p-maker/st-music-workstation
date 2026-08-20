@@ -149,6 +149,7 @@ int main()
     }
 
     const auto project_a = require_id<ProjectId>("00000000000000000000000000000001");
+    const auto project_b = require_id<ProjectId>("00000000000000000000000000000002");
     const ScopedMusicalEventId event_a{
         project_a,
         require_id<MusicalEventId>("00000000000000000000000000000011")};
@@ -169,46 +170,62 @@ int main()
     const auto state0 = EventProjectionRelationStateCandidate::initial(
         project_a,
         *one_link_limit);
-    check(state0.snapshot().matches(project_a, ProjectRevision::initial()), "initial state candidate starts at Project revision zero");
+    check(state0.project_id() == project_a, "initial relation state is scoped to its Project");
     check(state0.links().empty(), "initial state candidate has no accepted links");
     check(state0.limits() == *one_link_limit, "initial state candidate retains its bounded resource policy");
 
-    const auto revalidated_a = require_revalidated(
-        link_a,
-        view,
-        ProjectRevision::initial());
+    const auto revision0 = ProjectRevision::initial();
+    const ProjectSnapshotToken snapshot0{project_a, revision0};
+    const auto revalidated_a = require_revalidated(link_a, view, revision0);
     if (!revalidated_a) {
         return 1;
     }
 
     const auto transition1 = build_event_projection_relation_state_candidate(
         state0,
+        snapshot0,
         *revalidated_a);
     check(static_cast<bool>(transition1), "revalidated first link builds a next state candidate");
     check(transition1.error == EventProjectionRelationStateTransitionError::none, "successful transition has no error");
     check(state0.links().empty(), "successful transition leaves prior state candidate unchanged");
-    check(state0.snapshot().revision() == ProjectRevision::initial(), "successful transition does not revise prior snapshot");
     if (!transition1) {
         return 1;
     }
 
     const auto state1 = *transition1.value;
-    check(state1.snapshot().matches(project_a, ProjectRevision::from_persisted(1U)), "next state candidate advances snapshot exactly once");
+    check(state1.project_id() == project_a, "next relation state preserves Project scope");
+    check(transition1.next_snapshot->matches(project_a, ProjectRevision::from_persisted(1U)), "transition returns exact next Project snapshot separately from relation state");
     check(state1.links().size() == 1U, "next state candidate contains exactly one accepted link");
     check(state1.links().front().event_id() == event_a, "accepted link preserves MusicalEventId");
     check(state1.links().front().projection_id() == link_a.projection_id(), "accepted link preserves typed projection identity");
     check(state1.limits() == *one_link_limit, "resource limit remains immutable across transition");
 
     {
+        const ProjectSnapshotToken snapshot1{project_a, ProjectRevision::from_persisted(1U)};
         const auto stale = build_event_projection_relation_state_candidate(
             state1,
+            snapshot1,
             *revalidated_a);
-        check(!stale, "revalidated value from revision zero cannot apply to revision one candidate");
+        check(!stale, "revalidated value from revision zero cannot apply at Project revision one");
         check(stale.error == EventProjectionRelationStateTransitionError::base_snapshot_mismatch, "stale transition fails with base snapshot mismatch");
-        check(state1.links().size() == 1U, "stale transition leaves current candidate unchanged");
+        check(!stale.next_snapshot.has_value(), "stale transition returns no next Project snapshot");
+        check(state1.links().size() == 1U, "stale transition leaves current relation state unchanged");
+    }
+
+    {
+        const auto wrong_state = EventProjectionRelationStateCandidate::initial(
+            project_b,
+            *one_link_limit);
+        const auto mismatch = build_event_projection_relation_state_candidate(
+            wrong_state,
+            snapshot0,
+            *revalidated_a);
+        check(!mismatch, "relation state from another Project is rejected before transition");
+        check(mismatch.error == EventProjectionRelationStateTransitionError::current_state_project_mismatch, "current relation-state Project mismatch is explicit");
     }
 
     const auto revision1 = ProjectRevision::from_persisted(1U);
+    const ProjectSnapshotToken snapshot1{project_a, revision1};
     const auto duplicate_revalidated = require_revalidated(link_a, view, revision1);
     if (!duplicate_revalidated) {
         return 1;
@@ -216,10 +233,12 @@ int main()
     {
         const auto duplicate = build_event_projection_relation_state_candidate(
             state1,
+            snapshot1,
             *duplicate_revalidated);
         check(!duplicate, "transition rejects duplicate even if an inconsistent validation view missed it");
         check(duplicate.error == EventProjectionRelationStateTransitionError::duplicate_link, "duplicate transition has explicit duplicate error");
-        check(state1.links().size() == 1U, "duplicate failure leaves current candidate unchanged");
+        check(!duplicate.next_snapshot.has_value(), "duplicate failure returns no next Project snapshot");
+        check(state1.links().size() == 1U, "duplicate failure leaves current relation state unchanged");
     }
 
     const auto second_revalidated = require_revalidated(link_b, view, revision1);
@@ -229,20 +248,43 @@ int main()
     {
         const auto limited = build_event_projection_relation_state_candidate(
             state1,
+            snapshot1,
             *second_revalidated);
         check(!limited, "transition rejects growth beyond immutable relation limit");
         check(limited.error == EventProjectionRelationStateTransitionError::relation_limit_exceeded, "resource-limit failure is explicit");
-        check(state1.links().size() == 1U, "resource-limit failure leaves current candidate unchanged");
+        check(!limited.next_snapshot.has_value(), "resource-limit failure returns no next Project snapshot");
+        check(state1.links().size() == 1U, "resource-limit failure leaves current relation state unchanged");
+    }
+
+    {
+        const auto revision5 = ProjectRevision::from_persisted(5U);
+        const ProjectSnapshotToken snapshot5{project_a, revision5};
+        const auto revalidated_after_unrelated_project_changes = require_revalidated(
+            link_a,
+            view,
+            revision5);
+        if (!revalidated_after_unrelated_project_changes) {
+            return 1;
+        }
+        const auto after_unrelated_project_changes =
+            build_event_projection_relation_state_candidate(
+                state0,
+                snapshot5,
+                *revalidated_after_unrelated_project_changes);
+        check(static_cast<bool>(after_unrelated_project_changes), "unchanged relation state can transition at a later global Project revision");
+        check(after_unrelated_project_changes.next_snapshot->matches(project_a, ProjectRevision::from_persisted(6U)), "later global Project revision advances exactly once");
+        check(state0.links().empty(), "later global Project revision does not require retagging or mutating relation state");
     }
 
     for (int iteration = 0; iteration < 10000; ++iteration) {
         const auto repeated = build_event_projection_relation_state_candidate(
             state0,
+            snapshot0,
             *revalidated_a);
         check(static_cast<bool>(repeated), "repeated immutable transition remains successful");
-        check(repeated.value->snapshot().revision().value() == 1U, "repeated immutable transition remains deterministic");
+        check(repeated.next_snapshot->revision().value() == 1U, "repeated transition returns the same next Project revision");
         check(repeated.value->links().size() == 1U, "repeated transition produces the same relation count");
-        check(state0.links().empty(), "repeated transition never mutates the base candidate");
+        check(state0.links().empty(), "repeated transition never mutates the base relation state");
     }
 
     return failures == 0 ? 0 : 1;
