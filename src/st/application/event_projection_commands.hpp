@@ -85,6 +85,22 @@ execute_add_event_projection_link_command(
         };
     }
 
+    if (!(command.candidate().event_id().project_id() == base_snapshot.project_id())) {
+        return {
+            std::nullopt,
+            AddEventProjectionLinkCommandError::preparation_failed,
+            st::core::EventProjectionMutationPreparationError::event_wrong_project,
+        };
+    }
+
+    if (!(command.candidate().projection_project_id() == base_snapshot.project_id())) {
+        return {
+            std::nullopt,
+            AddEventProjectionLinkCommandError::preparation_failed,
+            st::core::EventProjectionMutationPreparationError::projection_wrong_project,
+        };
+    }
+
     const auto endpoint_view_project_id = current_endpoint_view.project_id();
     if (!(endpoint_view_project_id == base_snapshot.project_id())) {
         return {
