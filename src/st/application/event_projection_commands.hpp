@@ -229,4 +229,107 @@ execute_add_event_projection_link_command(
     };
 }
 
+class RemoveEventProjectionLinkCommand final {
+public:
+    RemoveEventProjectionLinkCommand(
+        st::core::ProjectSnapshotToken expected_snapshot,
+        st::core::EventProjectionLinkCandidate removal_key) noexcept
+        : expected_snapshot_(expected_snapshot)
+        , removal_key_(std::move(removal_key))
+    {
+    }
+
+    [[nodiscard]] const st::core::ProjectSnapshotToken& expected_snapshot() const noexcept
+    {
+        return expected_snapshot_;
+    }
+
+    [[nodiscard]] const st::core::EventProjectionLinkCandidate& removal_key() const noexcept
+    {
+        return removal_key_;
+    }
+
+private:
+    st::core::ProjectSnapshotToken expected_snapshot_;
+    st::core::EventProjectionLinkCandidate removal_key_;
+};
+
+enum class RemoveEventProjectionLinkCommandError : std::uint8_t {
+    none = 0,
+    command_project_mismatch,
+    stale_project_snapshot,
+    event_project_mismatch,
+    projection_project_mismatch,
+    publication_failed,
+};
+
+struct RemoveEventProjectionLinkCommandResult final {
+    std::optional<st::core::ProjectSnapshotToken> published_snapshot;
+    RemoveEventProjectionLinkCommandError error{
+        RemoveEventProjectionLinkCommandError::none};
+    st::core::ProjectEventProjectionRemovalPublicationError publication_error{
+        st::core::ProjectEventProjectionRemovalPublicationError::none};
+    st::core::EventProjectionRelationStateRemovalError removal_error{
+        st::core::EventProjectionRelationStateRemovalError::none};
+
+    [[nodiscard]] explicit operator bool() const noexcept
+    {
+        return published_snapshot.has_value() &&
+            error == RemoveEventProjectionLinkCommandError::none;
+    }
+};
+
+[[nodiscard]] inline RemoveEventProjectionLinkCommandResult
+execute_remove_event_projection_link_command(
+    st::core::ProjectAggregate& aggregate,
+    const RemoveEventProjectionLinkCommand& command)
+{
+    const auto base_snapshot = aggregate.snapshot();
+
+    if (!(command.expected_snapshot().project_id() == base_snapshot.project_id())) {
+        return {
+            std::nullopt,
+            RemoveEventProjectionLinkCommandError::command_project_mismatch,
+        };
+    }
+
+    if (!(command.expected_snapshot() == base_snapshot)) {
+        return {
+            std::nullopt,
+            RemoveEventProjectionLinkCommandError::stale_project_snapshot,
+        };
+    }
+
+    if (!(command.removal_key().event_id().project_id() == base_snapshot.project_id())) {
+        return {
+            std::nullopt,
+            RemoveEventProjectionLinkCommandError::event_project_mismatch,
+        };
+    }
+
+    if (!(command.removal_key().projection_project_id() == base_snapshot.project_id())) {
+        return {
+            std::nullopt,
+            RemoveEventProjectionLinkCommandError::projection_project_mismatch,
+        };
+    }
+
+    const auto published = aggregate.publish_event_projection_link_removal(
+        command.expected_snapshot(),
+        command.removal_key());
+    if (!published) {
+        return {
+            std::nullopt,
+            RemoveEventProjectionLinkCommandError::publication_failed,
+            published.error,
+            published.removal_error,
+        };
+    }
+
+    return {
+        published.published_snapshot,
+        RemoveEventProjectionLinkCommandError::none,
+    };
+}
+
 } // namespace st::application
