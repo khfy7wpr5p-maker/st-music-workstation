@@ -50,6 +50,7 @@ private:
 
 class EventProjectionRelationStateCandidate;
 struct EventProjectionRelationStateTransitionResult;
+struct EventProjectionRelationStateRemovalResult;
 
 class EventProjectionLink final {
 public:
@@ -130,6 +131,12 @@ private:
         const EventProjectionRelationStateCandidate& current,
         const ProjectSnapshotToken& current_project_snapshot,
         const RevalidatedEventProjectionLinkAddition& addition);
+
+    friend EventProjectionRelationStateRemovalResult
+    build_event_projection_relation_state_removal_candidate(
+        const EventProjectionRelationStateCandidate& current,
+        const ProjectSnapshotToken& current_project_snapshot,
+        const EventProjectionLinkCandidate& removal_key);
 
     EventProjectionRelationStateCandidate(
         ProjectId project_id,
@@ -254,6 +261,107 @@ build_event_projection_relation_state_candidate(
             std::nullopt,
             std::nullopt,
             EventProjectionRelationStateTransitionError::allocation_failure,
+        };
+    }
+}
+
+enum class EventProjectionRelationStateRemovalError : std::uint8_t {
+    none = 0,
+    current_state_project_mismatch,
+    link_wrong_project,
+    link_not_found,
+    revision_overflow,
+    allocation_failure,
+};
+
+struct EventProjectionRelationStateRemovalResult final {
+    std::optional<EventProjectionRelationStateCandidate> value;
+    std::optional<ProjectSnapshotToken> next_snapshot;
+    EventProjectionRelationStateRemovalError error{
+        EventProjectionRelationStateRemovalError::none};
+
+    [[nodiscard]] explicit operator bool() const noexcept
+    {
+        return value.has_value() && next_snapshot.has_value() &&
+            error == EventProjectionRelationStateRemovalError::none;
+    }
+};
+
+[[nodiscard]] inline EventProjectionRelationStateRemovalResult
+build_event_projection_relation_state_removal_candidate(
+    const EventProjectionRelationStateCandidate& current,
+    const ProjectSnapshotToken& current_project_snapshot,
+    const EventProjectionLinkCandidate& removal_key)
+{
+    if (!(current.project_id() == current_project_snapshot.project_id())) {
+        return {
+            std::nullopt,
+            std::nullopt,
+            EventProjectionRelationStateRemovalError::current_state_project_mismatch,
+        };
+    }
+
+    if (!(removal_key.event_id().project_id() == current.project_id()) ||
+        !(removal_key.projection_project_id() == current.project_id())) {
+        return {
+            std::nullopt,
+            std::nullopt,
+            EventProjectionRelationStateRemovalError::link_wrong_project,
+        };
+    }
+
+    const auto target = std::find_if(
+        current.links().begin(),
+        current.links().end(),
+        [&removal_key](const EventProjectionLink& existing) noexcept {
+            return existing.event_id() == removal_key.event_id() &&
+                existing.projection_id() == removal_key.projection_id();
+        });
+    if (target == current.links().end()) {
+        return {
+            std::nullopt,
+            std::nullopt,
+            EventProjectionRelationStateRemovalError::link_not_found,
+        };
+    }
+
+    const auto next_revision = current_project_snapshot.revision().next();
+    if (!next_revision) {
+        return {
+            std::nullopt,
+            std::nullopt,
+            EventProjectionRelationStateRemovalError::revision_overflow,
+        };
+    }
+
+    try {
+        std::vector<EventProjectionLink> next_links;
+        next_links.reserve(current.links().size() - 1U);
+        for (auto iterator = current.links().begin();
+             iterator != current.links().end();
+             ++iterator) {
+            if (iterator != target) {
+                next_links.push_back(*iterator);
+            }
+        }
+
+        return {
+            EventProjectionRelationStateCandidate{
+                current.project_id(),
+                current.limits(),
+                std::move(next_links),
+            },
+            ProjectSnapshotToken{
+                current.project_id(),
+                *next_revision,
+            },
+            EventProjectionRelationStateRemovalError::none,
+        };
+    } catch (const std::bad_alloc&) {
+        return {
+            std::nullopt,
+            std::nullopt,
+            EventProjectionRelationStateRemovalError::allocation_failure,
         };
     }
 }
