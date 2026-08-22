@@ -35,6 +35,29 @@ struct ProjectEventProjectionPublicationResult final {
     }
 };
 
+enum class ProjectEventProjectionRemovalPublicationError : std::uint8_t {
+    none = 0,
+    reentrant_publication,
+    expected_snapshot_project_mismatch,
+    stale_expected_snapshot,
+    relation_state_transition_failed,
+    internal_invariant_failure,
+};
+
+struct ProjectEventProjectionRemovalPublicationResult final {
+    std::optional<ProjectSnapshotToken> published_snapshot;
+    ProjectEventProjectionRemovalPublicationError error{
+        ProjectEventProjectionRemovalPublicationError::none};
+    EventProjectionRelationStateRemovalError removal_error{
+        EventProjectionRelationStateRemovalError::none};
+
+    [[nodiscard]] explicit operator bool() const noexcept
+    {
+        return published_snapshot.has_value() &&
+            error == ProjectEventProjectionRemovalPublicationError::none;
+    }
+};
+
 class ProjectAggregate final {
 public:
     ProjectAggregate(const ProjectAggregate&) = delete;
@@ -232,6 +255,93 @@ public:
             ProjectEventProjectionPublicationError::none,
             EventProjectionPublicationRevalidationError::none,
             EventProjectionRelationStateTransitionError::none,
+        };
+    }
+
+    [[nodiscard]] ProjectEventProjectionRemovalPublicationResult
+    publish_event_projection_link_removal(
+        const ProjectSnapshotToken& expected_snapshot,
+        const EventProjectionLinkCandidate& removal_key)
+    {
+        if (publication_in_progress_) {
+            return {
+                std::nullopt,
+                ProjectEventProjectionRemovalPublicationError::reentrant_publication,
+                EventProjectionRelationStateRemovalError::none,
+            };
+        }
+
+        publication_in_progress_ = true;
+        class PublicationGuard final {
+        public:
+            explicit PublicationGuard(bool& flag) noexcept
+                : flag_(flag)
+            {
+            }
+
+            ~PublicationGuard()
+            {
+                flag_ = false;
+            }
+
+            PublicationGuard(const PublicationGuard&) = delete;
+            PublicationGuard& operator=(const PublicationGuard&) = delete;
+
+        private:
+            bool& flag_;
+        } guard{publication_in_progress_};
+
+        if (!(expected_snapshot.project_id() == snapshot_.project_id())) {
+            return {
+                std::nullopt,
+                ProjectEventProjectionRemovalPublicationError::expected_snapshot_project_mismatch,
+                EventProjectionRelationStateRemovalError::none,
+            };
+        }
+
+        if (!(expected_snapshot == snapshot_)) {
+            return {
+                std::nullopt,
+                ProjectEventProjectionRemovalPublicationError::stale_expected_snapshot,
+                EventProjectionRelationStateRemovalError::none,
+            };
+        }
+
+        auto transition = build_event_projection_relation_state_removal_candidate(
+            event_projection_relations_,
+            snapshot_,
+            removal_key);
+        if (!transition) {
+            return {
+                std::nullopt,
+                ProjectEventProjectionRemovalPublicationError::relation_state_transition_failed,
+                transition.error,
+            };
+        }
+
+        if (!(transition.value->project_id() == snapshot_.project_id()) ||
+            !(transition.next_snapshot->project_id() == snapshot_.project_id())) {
+            return {
+                std::nullopt,
+                ProjectEventProjectionRemovalPublicationError::internal_invariant_failure,
+                EventProjectionRelationStateRemovalError::none,
+            };
+        }
+
+        static_assert(
+            std::is_nothrow_move_assignable_v<EventProjectionRelationStateCandidate>,
+            "authoritative relation-state removal commit must not throw after validation");
+        static_assert(
+            std::is_nothrow_copy_assignable_v<ProjectSnapshotToken>,
+            "authoritative removal snapshot commit must not throw after validation");
+
+        event_projection_relations_ = std::move(*transition.value);
+        snapshot_ = *transition.next_snapshot;
+
+        return {
+            snapshot_,
+            ProjectEventProjectionRemovalPublicationError::none,
+            EventProjectionRelationStateRemovalError::none,
         };
     }
 
